@@ -1,0 +1,833 @@
+
+<script src="https://cdn.pydata.org/bokeh/release/bokeh-1.4.0.min.js" type="text/javascript"></script>
+<script src="https://cdn.pydata.org/bokeh/release/bokeh-widgets-1.4.0.min.js" type="text/javascript"></script>
+<script src="https://cdn.pydata.org/bokeh/release/bokeh-tables-1.4.0.min.js" type="text/javascript"></script>
+<script src="https://cdn.pydata.org/bokeh/release/bokeh-gl-1.4.0.min.js" type="text/javascript"></script>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js" type="text/javascript"></script>
+<script src="https://code.jquery.com/ui/1.10.4/jquery-ui.min.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.20/require.min.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js" type="text/javascript"></script>
+<script type="text/javascript">function HoloViewsWidget() {
+}
+
+HoloViewsWidget.prototype.init_slider = function(init_val){
+  if(this.load_json) {
+    this.from_json()
+  } else {
+    this.update_cache();
+  }
+}
+
+HoloViewsWidget.prototype.populate_cache = function(idx){
+  this.cache[idx].innerHTML = this.frames[idx];
+  if (this.embed) {
+    delete this.frames[idx];
+  }
+}
+
+HoloViewsWidget.prototype.process_error = function(msg){
+}
+
+HoloViewsWidget.prototype.from_json = function() {
+  var data_url = this.json_path + this.id + '.json';
+  $.getJSON(data_url, $.proxy(function(json_data) {
+    this.frames = json_data;
+    this.update_cache();
+    this.update(0);
+  }, this));
+}
+
+HoloViewsWidget.prototype.dynamic_update = function(current){
+  if (current === undefined) {
+    return
+  }
+  this.current = current;
+  if (this.comm) {
+    var msg = {comm_id: this.id+'_client', content: current}
+    this.comm.send(msg);
+  }
+}
+
+HoloViewsWidget.prototype.update_cache = function(force){
+  var frame_len = Object.keys(this.frames).length;
+  for (var i=0; i<frame_len; i++) {
+    if(!this.load_json || this.dynamic)  {
+      var frame = Object.keys(this.frames)[i];
+    } else {
+      var frame = i;
+    }
+    if(!(frame in this.cache) || force) {
+      if ((frame in this.cache) && force) { this.cache[frame].remove() }
+      var div = document.createElement("div");
+      var parent = document.getElementById("_anim_img"+this.id);
+      div.style.display = "none";
+      parent.appendChild(div)
+      this.cache[frame] = div;
+      var cache_id = "_anim_img"+this.id+"_"+frame;
+      this.populate_cache(frame);
+    }
+  }
+}
+
+HoloViewsWidget.prototype.update = function(current){
+  if(current in this.cache) {
+    for (var index in this.cache) {
+      this.cache[index].style.display = "none";
+    }
+    this.cache[current].style.display = "";
+    this.wait = false;
+  }
+}
+
+HoloViewsWidget.prototype.init_comms = function() {
+  var that = this
+  HoloViews.comm_manager.register_target(this.plot_id, this.id, function (msg) { that.msg_handler(msg) })
+  if (!this.cached || this.dynamic) {
+    function ack_callback(msg) {
+      var msg = msg.metadata;
+      var comm_id = msg.comm_id;
+      var comm_status = HoloViews.comm_status[comm_id];
+      if (that.queue.length > 0) {
+        that.time = Date.now();
+        that.dynamic_update(that.queue[that.queue.length-1]);
+        that.queue = [];
+      } else {
+        that.wait = false;
+      }
+      if ((msg.msg_type == "Ready") && msg.content) {
+        console.log("Python callback returned following output:", msg.content);
+      } else if (msg.msg_type == "Error") {
+        console.log("Python failed with the following traceback:", msg.traceback)
+      }
+    }
+    var comm = HoloViews.comm_manager.get_client_comm(this.plot_id, this.id+'_client', ack_callback);
+    return comm
+  }
+}
+
+HoloViewsWidget.prototype.msg_handler = function(msg) {
+  var metadata = msg.metadata;
+  if ((metadata.msg_type == "Ready")) {
+    if (metadata.content) {
+      console.log("Python callback returned following output:", metadata.content);
+    }
+	return;
+  } else if (metadata.msg_type == "Error") {
+    console.log("Python failed with the following traceback:", metadata.traceback)
+    return
+  }
+  this.process_msg(msg)
+}
+
+HoloViewsWidget.prototype.process_msg = function(msg) {
+}
+
+function SelectionWidget(frames, id, slider_ids, keyMap, dim_vals, notFound, load_json, mode, cached, json_path, dynamic, plot_id){
+  this.frames = frames;
+  this.id = id;
+  this.plot_id = plot_id;
+  this.slider_ids = slider_ids;
+  this.keyMap = keyMap
+  this.current_frame = 0;
+  this.current_vals = dim_vals;
+  this.load_json = load_json;
+  this.mode = mode;
+  this.notFound = notFound;
+  this.cached = cached;
+  this.dynamic = dynamic;
+  this.cache = {};
+  this.json_path = json_path;
+  this.init_slider(this.current_vals[0]);
+  this.queue = [];
+  this.wait = false;
+  if (!this.cached || this.dynamic) {
+    this.comm = this.init_comms();
+  }
+}
+
+SelectionWidget.prototype = new HoloViewsWidget;
+
+
+SelectionWidget.prototype.get_key = function(current_vals) {
+  var key = "(";
+  for (var i=0; i<this.slider_ids.length; i++)
+  {
+    var val = this.current_vals[i];
+    if (!(typeof val === 'string')) {
+      if (val % 1 === 0) { val = val.toFixed(1); }
+      else { val = val.toFixed(10); val = val.slice(0, val.length-1);}
+    }
+    key += "'" + val + "'";
+    if(i != this.slider_ids.length-1) { key += ', ';}
+    else if(this.slider_ids.length == 1) { key += ',';}
+  }
+  key += ")";
+  return this.keyMap[key];
+}
+
+SelectionWidget.prototype.set_frame = function(dim_val, dim_idx){
+  this.current_vals[dim_idx] = dim_val;
+  var key = this.current_vals;
+  if (!this.dynamic) {
+    key = this.get_key(key)
+  }
+  if (this.dynamic || !this.cached) {
+    if ((this.time !== undefined) && ((this.wait) && ((this.time + 10000) > Date.now()))) {
+      this.queue.push(key);
+      return
+    }
+    this.queue = [];
+    this.time = Date.now();
+    this.current_frame = key;
+    this.wait = true;
+    this.dynamic_update(key)
+  } else if (key !== undefined) {
+    this.update(key)
+  }
+}
+
+
+/* Define the ScrubberWidget class */
+function ScrubberWidget(frames, num_frames, id, interval, load_json, mode, cached, json_path, dynamic, plot_id){
+  this.slider_id = "_anim_slider" + id;
+  this.loop_select_id = "_anim_loop_select" + id;
+  this.id = id;
+  this.plot_id = plot_id;
+  this.interval = interval;
+  this.current_frame = 0;
+  this.direction = 0;
+  this.dynamic = dynamic;
+  this.timer = null;
+  this.load_json = load_json;
+  this.mode = mode;
+  this.cached = cached;
+  this.frames = frames;
+  this.cache = {};
+  this.length = num_frames;
+  this.json_path = json_path;
+  document.getElementById(this.slider_id).max = this.length - 1;
+  this.init_slider(0);
+  this.wait = false;
+  this.queue = [];
+  if (!this.cached || this.dynamic) {
+    this.comm = this.init_comms()
+  }
+}
+
+ScrubberWidget.prototype = new HoloViewsWidget;
+
+ScrubberWidget.prototype.set_frame = function(frame){
+  this.current_frame = frame;
+  var widget = document.getElementById(this.slider_id);
+  if (widget === null) {
+    this.pause_animation();
+    return
+  }
+  widget.value = this.current_frame;
+  if (this.dynamic || !this.cached) {
+    if ((this.time !== undefined) && ((this.wait) && ((this.time + 10000) > Date.now()))) {
+      this.queue.push(frame);
+      return
+    }
+    this.queue = [];
+    this.time = Date.now();
+    this.wait = true;
+    this.dynamic_update(frame)
+  } else {
+    this.update(frame)
+  }
+}
+
+ScrubberWidget.prototype.get_loop_state = function(){
+  var button_group = document[this.loop_select_id].state;
+  for (var i = 0; i < button_group.length; i++) {
+    var button = button_group[i];
+    if (button.checked) {
+      return button.value;
+    }
+  }
+  return undefined;
+}
+
+
+ScrubberWidget.prototype.next_frame = function() {
+  this.set_frame(Math.min(this.length - 1, this.current_frame + 1));
+}
+
+ScrubberWidget.prototype.previous_frame = function() {
+  this.set_frame(Math.max(0, this.current_frame - 1));
+}
+
+ScrubberWidget.prototype.first_frame = function() {
+  this.set_frame(0);
+}
+
+ScrubberWidget.prototype.last_frame = function() {
+  this.set_frame(this.length - 1);
+}
+
+ScrubberWidget.prototype.slower = function() {
+  this.interval /= 0.7;
+  if(this.direction > 0){this.play_animation();}
+  else if(this.direction < 0){this.reverse_animation();}
+}
+
+ScrubberWidget.prototype.faster = function() {
+  this.interval *= 0.7;
+  if(this.direction > 0){this.play_animation();}
+  else if(this.direction < 0){this.reverse_animation();}
+}
+
+ScrubberWidget.prototype.anim_step_forward = function() {
+  if(this.current_frame < this.length - 1){
+    this.next_frame();
+  }else{
+    var loop_state = this.get_loop_state();
+    if(loop_state == "loop"){
+      this.first_frame();
+    }else if(loop_state == "reflect"){
+      this.last_frame();
+      this.reverse_animation();
+    }else{
+      this.pause_animation();
+      this.last_frame();
+    }
+  }
+}
+
+ScrubberWidget.prototype.anim_step_reverse = function() {
+  if(this.current_frame > 0){
+    this.previous_frame();
+  } else {
+    var loop_state = this.get_loop_state();
+    if(loop_state == "loop"){
+      this.last_frame();
+    }else if(loop_state == "reflect"){
+      this.first_frame();
+      this.play_animation();
+    }else{
+      this.pause_animation();
+      this.first_frame();
+    }
+  }
+}
+
+ScrubberWidget.prototype.pause_animation = function() {
+  this.direction = 0;
+  if (this.timer){
+    clearInterval(this.timer);
+    this.timer = null;
+  }
+}
+
+ScrubberWidget.prototype.play_animation = function() {
+  this.pause_animation();
+  this.direction = 1;
+  var t = this;
+  if (!this.timer) this.timer = setInterval(function(){t.anim_step_forward();}, this.interval);
+}
+
+ScrubberWidget.prototype.reverse_animation = function() {
+  this.pause_animation();
+  this.direction = -1;
+  var t = this;
+  if (!this.timer) this.timer = setInterval(function(){t.anim_step_reverse();}, this.interval);
+}
+
+function extend(destination, source) {
+  for (var k in source) {
+    if (source.hasOwnProperty(k)) {
+      destination[k] = source[k];
+    }
+  }
+  return destination;
+}
+
+function update_widget(widget, values) {
+  if (widget.hasClass("ui-slider")) {
+    widget.slider('option', {
+      min: 0,
+      max: values.length-1,
+      dim_vals: values,
+      value: 0,
+      dim_labels: values
+    })
+    widget.slider('option', 'slide').call(widget, event, {value: 0})
+  } else {
+    widget.empty();
+    for (var i=0; i<values.length; i++){
+      widget.append($("<option>", {
+        value: i,
+        text: values[i]
+      }))
+    };
+    widget.data('values', values);
+    widget.data('value', 0);
+    widget.trigger("change");
+  };
+}
+
+function init_slider(id, plot_id, dim, values, next_vals, labels, dynamic, step, value, next_dim,
+                     dim_idx, delay, jQueryUI_CDN, UNDERSCORE_CDN) {
+  // Slider JS Block START
+  function loadcssfile(filename){
+    var fileref=document.createElement("link")
+    fileref.setAttribute("rel", "stylesheet")
+    fileref.setAttribute("type", "text/css")
+    fileref.setAttribute("href", filename)
+    document.getElementsByTagName("head")[0].appendChild(fileref)
+  }
+  loadcssfile("https://code.jquery.com/ui/1.10.4/themes/smoothness/jquery-ui.css");
+  /* Check if jQuery and jQueryUI have been loaded
+     otherwise load with require.js */
+  var jQuery = window.jQuery,
+    // check for old versions of jQuery
+    oldjQuery = jQuery && !!jQuery.fn.jquery.match(/^1\.[0-4](\.|$)/),
+    jquery_path = '',
+    paths = {},
+    noConflict;
+  var jQueryUI = jQuery.ui;
+  // check for jQuery
+  if (!jQuery || oldjQuery) {
+    // load if it's not available or doesn't meet min standards
+    paths.jQuery = jQuery;
+    noConflict = !!oldjQuery;
+  } else {
+    // register the current jQuery
+    define('jquery', [], function() { return jQuery; });
+  }
+  if (!jQueryUI) {
+    paths.jQueryUI = jQueryUI_CDN.slice(null, -3);
+  } else {
+    define('jQueryUI', [], function() { return jQuery.ui; });
+  }
+  paths.underscore = UNDERSCORE_CDN.slice(null, -3);
+  var jquery_require = {
+    paths: paths,
+    shim: {
+      "jQueryUI": {
+        exports:"$",
+        deps: ['jquery']
+      },
+      "underscore": {
+        exports: '_'
+      }
+    }
+  }
+  require.config(jquery_require);
+  require(["jQueryUI", "underscore"], function(jUI, _){
+    if (noConflict) $.noConflict(true);
+    var vals = values;
+    if (dynamic && vals.constructor === Array) {
+      var default_value = parseFloat(value);
+      var min = parseFloat(vals[0]);
+      var max = parseFloat(vals[vals.length-1]);
+      var wstep = step;
+      var wlabels = [default_value];
+      var init_label = default_value;
+    } else {
+      var min = 0;
+      if (dynamic) {
+        var max = Object.keys(vals).length - 1;
+        var init_label = labels[value];
+        var default_value = values[value];
+      } else {
+        var max = vals.length - 1;
+        var init_label = labels[value];
+        var default_value = value;
+      }
+      var wstep = 1;
+      var wlabels = labels;
+    }
+    function adjustFontSize(text) {
+      var width_ratio = (text.parent().width()/8)/text.val().length;
+      var size = Math.min(0.9, Math.max(0.6, width_ratio))+'em';
+      text.css('font-size', size);
+    }
+    var slider = $('#_anim_widget'+id+'_'+dim);
+    slider.slider({
+      animate: "fast",
+      min: min,
+      max: max,
+      step: wstep,
+      value: default_value,
+      dim_vals: vals,
+      dim_labels: wlabels,
+      next_vals: next_vals,
+      slide: function(event, ui) {
+        var vals = slider.slider("option", "dim_vals");
+        var next_vals = slider.slider("option", "next_vals");
+        var dlabels = slider.slider("option", "dim_labels");
+        if (dynamic) {
+          var dim_val = ui.value;
+          if (vals.constructor === Array) {
+            var label = ui.value;
+          } else {
+            var label = dlabels[ui.value];
+          }
+        } else {
+          var dim_val = vals[ui.value];
+          var label = dlabels[ui.value];
+        }
+        var text = $('#textInput'+id+'_'+dim);
+        text.val(label);
+        adjustFontSize(text);
+        HoloViews.index[plot_id].set_frame(dim_val, dim_idx);
+        if (Object.keys(next_vals).length > 0) {
+          var new_vals = next_vals[dim_val];
+          var next_widget = $('#_anim_widget'+id+'_'+next_dim);
+          update_widget(next_widget, new_vals);
+        }
+      }
+    });
+    slider.keypress(function(event) {
+      if (event.which == 80 || event.which == 112) {
+        var start = slider.slider("option", "value");
+        var stop =  slider.slider("option", "max");
+        for (var i=start; i<=stop; i++) {
+          var delay = i*delay;
+          $.proxy(function doSetTimeout(i) { setTimeout($.proxy(function() {
+            var val = {value:i};
+            slider.slider('value',i);
+            slider.slider("option", "slide")(null, val);
+          }, slider), delay);}, slider)(i);
+        }
+      }
+      if (event.which == 82 || event.which == 114) {
+        var start = slider.slider("option", "value");
+        var stop =  slider.slider("option", "min");
+        var count = 0;
+        for (var i=start; i>=stop; i--) {
+          var delay = count*delay;
+          count = count + 1;
+          $.proxy(function doSetTimeout(i) { setTimeout($.proxy(function() {
+            var val = {value:i};
+            slider.slider('value',i);
+            slider.slider("option", "slide")(null, val);
+          }, slider), delay);}, slider)(i);
+        }
+      }
+    });
+    var textInput = $('#textInput'+id+'_'+dim)
+    textInput.val(init_label);
+    adjustFontSize(textInput);
+  });
+}
+
+function init_dropdown(id, plot_id, dim, vals, value, next_vals, labels, next_dim, dim_idx, dynamic) {
+  var widget = $("#_anim_widget"+id+'_'+dim);
+  widget.data('values', vals)
+  for (var i=0; i<vals.length; i++){
+    if (dynamic) {
+      var val = vals[i];
+    } else {
+      var val = i;
+    }
+    widget.append($("<option>", {
+      value: val,
+      text: labels[i]
+    }));
+  };
+  widget.data("next_vals", next_vals);
+  widget.val(value);
+  widget.on('change', function(event, ui) {
+    if (dynamic) {
+      var dim_val = parseInt(this.value);
+    } else {
+      var dim_val = $.data(this, 'values')[this.value];
+    }
+    var next_vals = $.data(this, "next_vals");
+    if (Object.keys(next_vals).length > 0) {
+      var new_vals = next_vals[dim_val];
+      var next_widget = $('#_anim_widget'+id+'_'+next_dim);
+      update_widget(next_widget, new_vals);
+    }
+    var widgets = HoloViews.index[plot_id]
+    if (widgets) {
+      widgets.set_frame(dim_val, dim_idx);
+    }
+  });
+}
+
+
+if (window.HoloViews === undefined) {
+  window.HoloViews = {}
+  window.PyViz = window.HoloViews
+} else if (window.PyViz === undefined) {
+  window.PyViz = window.HoloViews
+}
+
+
+var _namespace = {
+  init_slider: init_slider,
+  init_dropdown: init_dropdown,
+  comms: {},
+  comm_status: {},
+  index: {},
+  plot_index: {},
+  kernels: {},
+  receivers: {}
+}
+
+for (var k in _namespace) {
+  if (!(k in window.HoloViews)) {
+    window.HoloViews[k] = _namespace[k];
+  }
+}
+
+// Define Bokeh specific subclasses
+function BokehSelectionWidget() {
+  SelectionWidget.apply(this, arguments);
+}
+
+function BokehScrubberWidget() {
+  ScrubberWidget.apply(this, arguments);
+}
+
+// Let them inherit from the baseclasses
+BokehSelectionWidget.prototype = Object.create(SelectionWidget.prototype);
+BokehScrubberWidget.prototype = Object.create(ScrubberWidget.prototype);
+
+// Define methods to override on widgets
+var BokehMethods = {
+  update_cache : function(){
+    for (var index in this.frames) {
+      this.frames[index] = JSON.parse(this.frames[index]);
+    }
+  },
+  update : function(current){
+    if (current === undefined) {
+      return;
+    }
+    var data = this.frames[current];
+    if (data !== undefined) {
+      if (data.root in HoloViews.plot_index) {
+        var doc = HoloViews.plot_index[data.root].model.document;
+      } else {
+        var doc = Bokeh.index[data.root].model.document;
+      }
+      doc.apply_json_patch(data.content);
+    }
+  },
+  init_comms: function() {
+    if (Bokeh.protocol !== undefined) {
+      this.receiver = new Bokeh.protocol.Receiver()
+    } else {
+      this.receiver = null;
+    }
+    return HoloViewsWidget.prototype.init_comms.call(this);
+  },
+  process_msg : function(msg) {
+    if (this.plot_id in HoloViews.plot_index) {
+      var doc = HoloViews.plot_index[this.plot_id].model.document;
+    } else {
+      var doc = Bokeh.index[this.plot_id].model.document;
+    }
+    if (this.receiver === null) { return }
+    var receiver = this.receiver;
+    if (msg.buffers.length > 0) {
+      receiver.consume(msg.buffers[0].buffer)
+    } else {
+      receiver.consume(msg.content.data)
+    }
+    const comm_msg = receiver.message;
+    if ((comm_msg != null) && (doc != null)) {
+      doc.apply_json_patch(comm_msg.content, comm_msg.buffers)
+    }
+  }
+}
+
+// Extend Bokeh widgets with backend specific methods
+extend(BokehSelectionWidget.prototype, BokehMethods);
+extend(BokehScrubberWidget.prototype, BokehMethods);
+
+window.HoloViews.BokehSelectionWidget = BokehSelectionWidget
+window.HoloViews.BokehScrubberWidget = BokehScrubberWidget
+</script>
+<script type="text/javascript">
+    function JupyterCommManager() {
+    }
+
+    JupyterCommManager.prototype.register_target = function(plot_id, comm_id, msg_handler) {
+      if (window.comm_manager || ((window.Jupyter !== undefined) && (Jupyter.notebook.kernel != null))) {
+        var comm_manager = window.comm_manager || Jupyter.notebook.kernel.comm_manager;
+        comm_manager.register_target(comm_id, function(comm) {
+          comm.on_msg(msg_handler);
+        });
+      } else if ((plot_id in window.PyViz.kernels) && (window.PyViz.kernels[plot_id])) {
+        window.PyViz.kernels[plot_id].registerCommTarget(comm_id, function(comm) {
+          comm.onMsg = msg_handler;
+        });
+      }
+    }
+
+    JupyterCommManager.prototype.get_client_comm = function(plot_id, comm_id, msg_handler) {
+      if (comm_id in window.PyViz.comms) {
+        return window.PyViz.comms[comm_id];
+      } else if (window.comm_manager || ((window.Jupyter !== undefined) && (Jupyter.notebook.kernel != null))) {
+        var comm_manager = window.comm_manager || Jupyter.notebook.kernel.comm_manager;
+        var comm = comm_manager.new_comm(comm_id, {}, {}, {}, comm_id);
+        if (msg_handler) {
+          comm.on_msg(msg_handler);
+        }
+      } else if ((plot_id in window.PyViz.kernels) && (window.PyViz.kernels[plot_id])) {
+        var comm = window.PyViz.kernels[plot_id].connectToComm(comm_id);
+        comm.open();
+        if (msg_handler) {
+          comm.onMsg = msg_handler;
+        }
+      }
+
+      window.PyViz.comms[comm_id] = comm;
+      return comm;
+    }
+
+    window.PyViz.comm_manager = new JupyterCommManager();
+    </script>
+
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.10.4/themes/smoothness/jquery-ui.css">
+<style>div.hololayout {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+div.holoframe {
+  width: 75%;
+}
+
+div.holowell {
+  display: flex;
+  align-items: center;
+}
+
+form.holoform {
+  background-color: #fafafa;
+  border-radius: 5px;
+  overflow: hidden;
+  padding-left: 0.8em;
+  padding-right: 0.8em;
+  padding-top: 0.4em;
+  padding-bottom: 0.4em;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.05);
+  margin-bottom: 20px;
+  border: 1px solid #e3e3e3;
+}
+
+div.holowidgets {
+  padding-right: 0;
+  width: 25%;
+}
+
+div.holoslider {
+  min-height: 0 !important;
+  height: 0.8em;
+  width: 100%;
+}
+
+div.holoformgroup {
+  padding-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+div.hologroup {
+  padding-left: 0;
+  padding-right: 0.8em;
+  width: 100%;
+}
+
+.holoselect {
+  width: 92%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.holotext {
+  padding-left:  0.5em;
+  padding-right: 0;
+  width: 100%;
+}
+
+.holowidgets .ui-resizable-se {
+  visibility: hidden
+}
+
+.holoframe > .ui-resizable-se {
+  visibility: hidden
+}
+
+.holowidgets .ui-resizable-s {
+  visibility: hidden
+}
+
+
+/* CSS rules for noUISlider based slider used by JupyterLab extension  */
+
+.noUi-handle {
+  width: 20px !important;
+  height: 20px !important;
+  left: -5px !important;
+  top: -5px !important;
+}
+
+.noUi-handle:before, .noUi-handle:after {
+  visibility: hidden;
+  height: 0px;
+}
+
+.noUi-target {
+  margin-left: 0.5em;
+  margin-right: 0.5em;
+}
+
+div.bk-hbox {
+    display: flex;
+    justify-content: center;
+}
+
+div.bk-hbox div.bk-plot {
+    padding: 8px;
+}
+
+div.bk-hbox div.bk-data-table {
+    padding: 20px;
+}
+</style><div style='display: table; margin: 0 auto;'>
+
+
+
+
+
+
+  <div class="bk-root" id="a4809cd3-4197-4e97-9717-fd2e6f679e9c" data-root-id="2947"></div>
+
+<script type="text/javascript">
+  (function(root) {
+  function embed_document(root) {
+    
+  var docs_json = {"05c37644-72b6-49fe-9398-9870c4c85ab1":{"roots":{"references":[{"attributes":{"children":[{"id":"2946","type":"ToolbarBox"},{"id":"2944","type":"GridBox"}]},"id":"2947","type":"Column"},{"attributes":{"grid_line_color":null,"ticker":{"id":"1700","type":"DatetimeTicker"}},"id":"1703","type":"Grid"},{"attributes":{"months":[0,6]},"id":"2940","type":"MonthsTicker"},{"attributes":{"bottom_units":"screen","fill_alpha":{"value":0.5},"fill_color":{"value":"lightgrey"},"left_units":"screen","level":"overlay","line_alpha":{"value":1.0},"line_color":{"value":"black"},"line_dash":[4,4],"line_width":{"value":2},"render_mode":"css","right_units":"screen","top_units":"screen"},"id":"2942","type":"BoxAnnotation"},{"attributes":{"mantissas":[1,2,5],"max_interval":500.0,"num_minor_ticks":0},"id":"2918","type":"AdaptiveTicker"},{"attributes":{},"id":"2916","type":"UnionRenderers"},{"attributes":{"months":[0,4,8]},"id":"2939","type":"MonthsTicker"},{"attributes":{},"id":"2941","type":"YearsTicker"},{"attributes":{"months":[0,2,4,6,8,10]},"id":"2938","type":"MonthsTicker"},{"attributes":{},"id":"1705","type":"BasicTicker"},{"attributes":{"months":[0,6]},"id":"2028","type":"MonthsTicker"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"1727","type":"BasicTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"1705","type":"BasicTicker"}},"id":"1704","type":"LinearAxis"},{"attributes":{"callback":null,"end":126779.14898597288,"reset_end":126779.14898597288,"reset_start":14113.292754553597,"start":14113.292754553597,"tags":[[["total-infected","total-infected",null]]]},"id":"2492","type":"Range1d"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"2767","type":"DatetimeTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"2737","type":"DatetimeTicker"}},"id":"2736","type":"DatetimeAxis"},{"attributes":{},"id":"2530","type":"DatetimeTickFormatter"},{"attributes":{"callback":null,"renderers":[{"id":"1485","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["predicted+error","@{predicted_plus_error}"]]},"id":"1430","type":"HoverTool"},{"attributes":{"callback":null,"data":{"0-infection-day":{"__ndarray__":"AACAxF8Xd0IAAICJPBt3QgAAwFF9HXdCAAAAg3Qed0IAAMDoxh53QgAAwFF9HXdCAABAhtgcd0IAAMBRfR13QgAAAOwqHXdCAABAHSIed0IAAMB/ECB3QgAAALEHIXdCAACAQYkld0IAAIDY0iZ3QgAAwAnKJ3dCAAAAO8Eod0IAAMDbNiV3QgAAAN+aI3dCAAAAduQkd0IAAICqPyR3QgAAAHbkJHdCAAAAduQkd0IAAADfmiN3Qg==","dtype":"float64","shape":[23]},"A_0_hyphen_minus_infection_hyphen_minus_day":{"__ndarray__":"AACAxF8Xd0IAAICJPBt3QgAAwFF9HXdCAAAAg3Qed0IAAMDoxh53QgAAwFF9HXdCAABAhtgcd0IAAMBRfR13QgAAAOwqHXdCAABAHSIed0IAAMB/ECB3QgAAALEHIXdCAACAQYkld0IAAIDY0iZ3QgAAwAnKJ3dCAAAAO8Eod0IAAMDbNiV3QgAAAN+aI3dCAAAAduQkd0IAAICqPyR3QgAAAHbkJHdCAAAAduQkd0IAAADfmiN3Qg==","dtype":"float64","shape":[23]},"A_0_hyphen_minus_infection_hyphen_minus_day_dt_strings":["2020-04-14 00:00:00","2020-04-26 00:00:00","2020-05-03 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-03 00:00:00","2020-05-01 00:00:00","2020-05-03 00:00:00","2020-05-02 00:00:00","2020-05-05 00:00:00","2020-05-11 00:00:00","2020-05-14 00:00:00","2020-05-28 00:00:00","2020-06-01 00:00:00","2020-06-04 00:00:00","2020-06-07 00:00:00","2020-05-27 00:00:00","2020-05-22 00:00:00","2020-05-26 00:00:00","2020-05-24 00:00:00","2020-05-26 00:00:00","2020-05-26 00:00:00","2020-05-22 00:00:00"],"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"]},"selected":{"id":"2759","type":"Selection"},"selection_policy":{"id":"2916","type":"UnionRenderers"}},"id":"2758","type":"ColumnDataSource"},{"attributes":{},"id":"2217","type":"Selection"},{"attributes":{"num_minor_ticks":5,"tickers":[{"id":"2918","type":"AdaptiveTicker"},{"id":"2919","type":"AdaptiveTicker"},{"id":"2920","type":"AdaptiveTicker"},{"id":"2921","type":"DaysTicker"},{"id":"2922","type":"DaysTicker"},{"id":"2923","type":"DaysTicker"},{"id":"2924","type":"DaysTicker"},{"id":"2925","type":"MonthsTicker"},{"id":"2926","type":"MonthsTicker"},{"id":"2927","type":"MonthsTicker"},{"id":"2928","type":"MonthsTicker"},{"id":"2929","type":"YearsTicker"}]},"id":"2742","type":"DatetimeTicker"},{"attributes":{"num_minor_ticks":5,"tickers":[{"id":"2930","type":"AdaptiveTicker"},{"id":"2931","type":"AdaptiveTicker"},{"id":"2932","type":"AdaptiveTicker"},{"id":"2933","type":"DaysTicker"},{"id":"2934","type":"DaysTicker"},{"id":"2935","type":"DaysTicker"},{"id":"2936","type":"DaysTicker"},{"id":"2937","type":"MonthsTicker"},{"id":"2938","type":"MonthsTicker"},{"id":"2939","type":"MonthsTicker"},{"id":"2940","type":"MonthsTicker"},{"id":"2941","type":"YearsTicker"}]},"id":"2737","type":"DatetimeTicker"},{"attributes":{"base":24,"mantissas":[1,2,4,6,8,12],"max_interval":43200000.0,"min_interval":3600000.0,"num_minor_ticks":0},"id":"1775","type":"AdaptiveTicker"},{"attributes":{"dimension":1,"grid_line_color":null,"ticker":{"id":"2742","type":"DatetimeTicker"}},"id":"2745","type":"Grid"},{"attributes":{},"id":"2732","type":"LinearScale"},{"attributes":{"callback":null,"renderers":[{"id":"2555","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["total-infected+error","@{total_hyphen_minus_infected_plus_error}"]]},"id":"2495","type":"HoverTool"},{"attributes":{"callback":null,"renderers":[{"id":"2539","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["total-infected","@{total_hyphen_minus_infected}"]]},"id":"2493","type":"HoverTool"},{"attributes":{"days":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]},"id":"1776","type":"DaysTicker"},{"attributes":{"callback":null,"end":1590105600000.0,"reset_end":1590105600000.0,"reset_start":1582567200000.0,"start":1582567200000.0,"tags":[[["index","index",null]]]},"id":"1427","type":"Range1d"},{"attributes":{"callback":null,"renderers":[{"id":"2764","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["0-infection-day","@{A_0_hyphen_minus_infection_hyphen_minus_day_dt_strings}"]]},"id":"2726","type":"HoverTool"},{"attributes":{},"id":"1452","type":"SaveTool"},{"attributes":{"callback":null,"renderers":[{"id":"2547","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["total-infected-error","@{total_hyphen_minus_infected_hyphen_minus_error}"]]},"id":"2494","type":"HoverTool"},{"attributes":{},"id":"2734","type":"LinearScale"},{"attributes":{},"id":"2746","type":"SaveTool"},{"attributes":{},"id":"1453","type":"PanTool"},{"attributes":{"callback":null,"end":94583.21894879926,"reset_end":94583.21894879926,"reset_start":229.0,"start":229.0,"tags":[[["predicted","predicted",null]]]},"id":"1428","type":"Range1d"},{"attributes":{},"id":"2759","type":"Selection"},{"attributes":{"callback":null,"renderers":[{"id":"1477","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["predicted","@{predicted}"]]},"id":"1429","type":"HoverTool"},{"attributes":{},"id":"2532","type":"BasicTickFormatter"},{"attributes":{},"id":"1454","type":"WheelZoomTool"},{"attributes":{"callback":null,"end":1591488000000.0,"reset_end":1591488000000.0,"reset_start":1586822400000.0,"start":1586822400000.0,"tags":[[["0-infection-day","0-infection-day",null]]]},"id":"2725","type":"Range1d"},{"attributes":{"grid_line_color":null,"ticker":{"id":"2737","type":"DatetimeTicker"}},"id":"2740","type":"Grid"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"2769","type":"DatetimeTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"2742","type":"DatetimeTicker"}},"id":"2741","type":"DatetimeAxis"},{"attributes":{"mantissas":[1,2,5],"max_interval":500.0,"num_minor_ticks":0},"id":"1516","type":"AdaptiveTicker"},{"attributes":{"line_alpha":0.2,"line_color":"red","line_width":4,"x":{"field":"index"},"y":{"field":"cumulative"}},"id":"1500","type":"Line"},{"attributes":{},"id":"1980","type":"DatetimeTickFormatter"},{"attributes":{},"id":"1514","type":"UnionRenderers"},{"attributes":{"base":60,"mantissas":[1,2,5,10,15,20,30],"max_interval":1800000.0,"min_interval":1000.0,"num_minor_ticks":0},"id":"1517","type":"AdaptiveTicker"},{"attributes":{},"id":"1508","type":"UnionRenderers"},{"attributes":{"base":24,"mantissas":[1,2,4,6,8,12],"max_interval":43200000.0,"min_interval":3600000.0,"num_minor_ticks":0},"id":"1518","type":"AdaptiveTicker"},{"attributes":{"callback":null,"renderers":[{"id":"1501","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["cumulative","@{cumulative}"]]},"id":"1432","type":"HoverTool"},{"attributes":{},"id":"1510","type":"UnionRenderers"},{"attributes":{"callback":null,"renderers":[{"id":"1493","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["predicted-error","@{predicted_hyphen_minus_error}"]]},"id":"1431","type":"HoverTool"},{"attributes":{"line_color":"red","line_width":4,"x":{"field":"index"},"y":{"field":"cumulative"}},"id":"1498","type":"Line"},{"attributes":{"line_alpha":0.1,"line_color":"red","line_width":4,"x":{"field":"index"},"y":{"field":"cumulative"}},"id":"1499","type":"Line"},{"attributes":{},"id":"1512","type":"UnionRenderers"},{"attributes":{"data_source":{"id":"1495","type":"ColumnDataSource"},"glyph":{"id":"1498","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1500","type":"Line"},"nonselection_glyph":{"id":"1499","type":"Line"},"selection_glyph":null,"view":{"id":"1502","type":"CDSView"}},"id":"1501","type":"GlyphRenderer"},{"attributes":{"source":{"id":"1495","type":"ColumnDataSource"}},"id":"1502","type":"CDSView"},{"attributes":{"days":[1,4,7,10,13,16,19,22,25,28]},"id":"1777","type":"DaysTicker"},{"attributes":{"num_minor_ticks":5,"tickers":[{"id":"1516","type":"AdaptiveTicker"},{"id":"1517","type":"AdaptiveTicker"},{"id":"1518","type":"AdaptiveTicker"},{"id":"1519","type":"DaysTicker"},{"id":"1520","type":"DaysTicker"},{"id":"1521","type":"DaysTicker"},{"id":"1522","type":"DaysTicker"},{"id":"1523","type":"MonthsTicker"},{"id":"1524","type":"MonthsTicker"},{"id":"1525","type":"MonthsTicker"},{"id":"1526","type":"MonthsTicker"},{"id":"1527","type":"YearsTicker"}]},"id":"1443","type":"DatetimeTicker"},{"attributes":{},"id":"2029","type":"YearsTicker"},{"attributes":{"bottom_units":"screen","fill_alpha":{"value":0.5},"fill_color":{"value":"lightgrey"},"left_units":"screen","level":"overlay","line_alpha":{"value":1.0},"line_color":{"value":"black"},"line_dash":[4,4],"line_width":{"value":2},"render_mode":"css","right_units":"screen","top_units":"screen"},"id":"2030","type":"BoxAnnotation"},{"attributes":{"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted+error"}},"id":"1482","type":"Line"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"1980","type":"DatetimeTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"1956","type":"DatetimeTicker"}},"id":"1955","type":"DatetimeAxis"},{"attributes":{},"id":"1737","type":"Selection"},{"attributes":{"source":{"id":"1487","type":"ColumnDataSource"}},"id":"1494","type":"CDSView"},{"attributes":{"num_minor_ticks":5,"tickers":[{"id":"2018","type":"AdaptiveTicker"},{"id":"2019","type":"AdaptiveTicker"},{"id":"2020","type":"AdaptiveTicker"},{"id":"2021","type":"DaysTicker"},{"id":"2022","type":"DaysTicker"},{"id":"2023","type":"DaysTicker"},{"id":"2024","type":"DaysTicker"},{"id":"2025","type":"MonthsTicker"},{"id":"2026","type":"MonthsTicker"},{"id":"2027","type":"MonthsTicker"},{"id":"2028","type":"MonthsTicker"},{"id":"2029","type":"YearsTicker"}]},"id":"1956","type":"DatetimeTicker"},{"attributes":{"months":[0,1,2,3,4,5,6,7,8,9,10,11]},"id":"1780","type":"MonthsTicker"},{"attributes":{},"id":"1729","type":"Selection"},{"attributes":{"months":[0,2,4,6,8,10]},"id":"2926","type":"MonthsTicker"},{"attributes":{"months":[0,4,8]},"id":"2927","type":"MonthsTicker"},{"attributes":{"grid_line_color":null,"ticker":{"id":"1956","type":"DatetimeTicker"}},"id":"1959","type":"Grid"},{"attributes":{"months":[0,2,4,6,8,10]},"id":"1781","type":"MonthsTicker"},{"attributes":{"line_alpha":0.1,"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted+error"}},"id":"1483","type":"Line"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"1982","type":"BasicTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"1961","type":"BasicTicker"}},"id":"1960","type":"LinearAxis"},{"attributes":{},"id":"1961","type":"BasicTicker"},{"attributes":{"months":[0,4,8]},"id":"1782","type":"MonthsTicker"},{"attributes":{"dimension":1,"grid_line_color":null,"ticker":{"id":"1961","type":"BasicTicker"}},"id":"1964","type":"Grid"},{"attributes":{"line_color":"blue","line_width":4,"x":{"field":"index"},"y":{"field":"predicted"}},"id":"1474","type":"Line"},{"attributes":{},"id":"1713","type":"ResetTool"},{"attributes":{"active_drag":"auto","active_inspect":"auto","active_multi":null,"active_scroll":"auto","active_tap":"auto","tools":[{"id":"1943","type":"HoverTool"},{"id":"1944","type":"HoverTool"},{"id":"1945","type":"HoverTool"},{"id":"1965","type":"SaveTool"},{"id":"1966","type":"PanTool"},{"id":"1967","type":"WheelZoomTool"},{"id":"1968","type":"BoxZoomTool"},{"id":"1969","type":"ResetTool"}]},"id":"1970","type":"Toolbar"},{"attributes":{"callback":null,"data":{"cumulative":{"__ndarray__":"AAAAAACgbEAAAAAAACB0QAAAAAAAAHlAAAAAAABQhEAAAAAAAMCLQAAAAAAAoJFAAAAAAAB4mkAAAAAAANCfQAAAAAAAjKNAAAAAAAAiqEAAAAAAACSuQAAAAAAAHLJAAAAAAADptUAAAAAAABe7QAAAAACAqsBAAAAAAABBxEAAAAAAgD7IQAAAAAAAo8xAAAAAAIBi0EAAAAAAQB3TQAAAAACA5tVAAAAAAMDA2EAAAAAA4HjbQAAAAADwBN9AAAAAAHiy4UAAAAAAOPrjQAAAAADYVOZAAAAAAHhD6EAAAAAA+BvqQAAAAAB43+tAAAAAANiT7UAAAAAAGIHvQAAAAACc0/BAAAAAAMy38UAAAAAAZF3yQAAAAABkxPJAAAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fw==","dtype":"float64","shape":[89]},"index":{"__ndarray__":"AABQsYUHd0IAABAX2Ad3QgAA0HwqCHdCAACQ4nwId0IAAFBIzwh3QgAAEK4hCXdCAADQE3QJd0IAAJB5xgl3QgAAUN8YCndCAAAQRWsKd0IAANCqvQp3QgAAkBAQC3dCAABQdmILd0IAABDctAt3QgAA0EEHDHdCAACQp1kMd0IAAGieqAx3QgAAKAT7DHdCAADoaU0Nd0IAAKjPnw13QgAAaDXyDXdCAAAom0QOd0IAAOgAlw53QgAAqGbpDndCAABozDsPd0IAACgyjg93QgAA6JfgD3dCAACo/TIQd0IAAGhjhRB3QgAAKMnXEHdCAADoLioRd0IAAKiUfBF3QgAAaPrOEXdCAAAoYCESd0IAAOjFcxJ3QgAAqCvGEndCAAAANN4Sd0IAAMCZMBN3QgAAgP+CE3dCAABAZdUTd0IAAADLJxR3QgAAwDB6FHdCAACAlswUd0IAAED8HhV3QgAAAGJxFXdCAADAx8MVd0IAAIAtFhZ3QgAAQJNoFndCAAAA+boWd0IAAMBeDRd3QgAAgMRfF3dCAABAKrIXd0IAAACQBBh3QgAAwPVWGHdCAACAW6kYd0IAAEDB+xh3QgAAACdOGXdCAADAjKAZd0IAAIDy8hl3QgAAQFhFGndCAAAAvpcad0IAAMAj6hp3QgAAgIk8G3dCAABA744bd0IAAABV4Rt3QgAAwLozHHdCAACAIIYcd0IAAECG2Bx3QgAAAOwqHXdCAADAUX0dd0IAAIC3zx13QgAAQB0iHndCAAAAg3Qed0IAAMDoxh53QgAAgE4ZH3dCAABAtGsfd0IAAAAavh93QgAAwH8QIHdCAACA5WIgd0IAAEBLtSB3QgAAALEHIXdCAADAFlohd0IAAIB8rCF3QgAAQOL+IXdCAAAASFEid0IAAMCtoyJ3QgAAgBP2IndCAABAeUgjd0IAAADfmiN3Qg==","dtype":"float64","shape":[89]},"index_dt_strings":["2020-02-24 18:00:00","2020-02-25 18:00:00","2020-02-26 18:00:00","2020-02-27 18:00:00","2020-02-28 18:00:00","2020-02-29 18:00:00","2020-03-01 18:00:00","2020-03-02 18:00:00","2020-03-03 18:00:00","2020-03-04 18:00:00","2020-03-05 18:00:00","2020-03-06 18:00:00","2020-03-07 18:00:00","2020-03-08 18:00:00","2020-03-09 18:00:00","2020-03-10 18:00:00","2020-03-11 17:00:00","2020-03-12 17:00:00","2020-03-13 17:00:00","2020-03-14 17:00:00","2020-03-15 17:00:00","2020-03-16 17:00:00","2020-03-17 17:00:00","2020-03-18 17:00:00","2020-03-19 17:00:00","2020-03-20 17:00:00","2020-03-21 17:00:00","2020-03-22 17:00:00","2020-03-23 17:00:00","2020-03-24 17:00:00","2020-03-25 17:00:00","2020-03-26 17:00:00","2020-03-27 17:00:00","2020-03-28 17:00:00","2020-03-29 17:00:00","2020-03-30 17:00:00","2020-03-31 00:00:00","2020-04-01 00:00:00","2020-04-02 00:00:00","2020-04-03 00:00:00","2020-04-04 00:00:00","2020-04-05 00:00:00","2020-04-06 00:00:00","2020-04-07 00:00:00","2020-04-08 00:00:00","2020-04-09 00:00:00","2020-04-10 00:00:00","2020-04-11 00:00:00","2020-04-12 00:00:00","2020-04-13 00:00:00","2020-04-14 00:00:00","2020-04-15 00:00:00","2020-04-16 00:00:00","2020-04-17 00:00:00","2020-04-18 00:00:00","2020-04-19 00:00:00","2020-04-20 00:00:00","2020-04-21 00:00:00","2020-04-22 00:00:00","2020-04-23 00:00:00","2020-04-24 00:00:00","2020-04-25 00:00:00","2020-04-26 00:00:00","2020-04-27 00:00:00","2020-04-28 00:00:00","2020-04-29 00:00:00","2020-04-30 00:00:00","2020-05-01 00:00:00","2020-05-02 00:00:00","2020-05-03 00:00:00","2020-05-04 00:00:00","2020-05-05 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-08 00:00:00","2020-05-09 00:00:00","2020-05-10 00:00:00","2020-05-11 00:00:00","2020-05-12 00:00:00","2020-05-13 00:00:00","2020-05-14 00:00:00","2020-05-15 00:00:00","2020-05-16 00:00:00","2020-05-17 00:00:00","2020-05-18 00:00:00","2020-05-19 00:00:00","2020-05-20 00:00:00","2020-05-21 00:00:00","2020-05-22 00:00:00"]},"selected":{"id":"1496","type":"Selection"},"selection_policy":{"id":"1514","type":"UnionRenderers"}},"id":"1495","type":"ColumnDataSource"},{"attributes":{},"id":"1527","type":"YearsTicker"},{"attributes":{"callback":null,"renderers":[{"id":"1734","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["predicted_daily","@{predicted_daily}"]]},"id":"1686","type":"HoverTool"},{"attributes":{},"id":"1965","type":"SaveTool"},{"attributes":{"line_alpha":0.1,"line_color":"blue","line_width":4,"x":{"field":"index"},"y":{"field":"predicted"}},"id":"1475","type":"Line"},{"attributes":{"months":[0,6]},"id":"2928","type":"MonthsTicker"},{"attributes":{},"id":"2929","type":"YearsTicker"},{"attributes":{},"id":"1966","type":"PanTool"},{"attributes":{"bottom_units":"screen","fill_alpha":{"value":0.5},"fill_color":{"value":"lightgrey"},"left_units":"screen","level":"overlay","line_alpha":{"value":1.0},"line_color":{"value":"black"},"line_dash":[4,4],"line_width":{"value":2},"render_mode":"css","right_units":"screen","top_units":"screen"},"id":"1528","type":"BoxAnnotation"},{"attributes":{"line_alpha":0.2,"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted+error"}},"id":"1484","type":"Line"},{"attributes":{},"id":"1967","type":"WheelZoomTool"},{"attributes":{"line_alpha":0.2,"line_color":"orange","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"speed-error"}},"id":"1996","type":"Line"},{"attributes":{"dimension":1,"grid_line_color":null,"ticker":{"id":"1705","type":"BasicTicker"}},"id":"1708","type":"Grid"},{"attributes":{"line_alpha":0.1,"line_color":"orange","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"speed-error"}},"id":"1995","type":"Line"},{"attributes":{},"id":"1711","type":"WheelZoomTool"},{"attributes":{"overlay":{"id":"2030","type":"BoxAnnotation"}},"id":"1968","type":"BoxZoomTool"},{"attributes":{"data_source":{"id":"1479","type":"ColumnDataSource"},"glyph":{"id":"1482","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1484","type":"Line"},"nonselection_glyph":{"id":"1483","type":"Line"},"selection_glyph":null,"view":{"id":"1486","type":"CDSView"}},"id":"1485","type":"GlyphRenderer"},{"attributes":{},"id":"1969","type":"ResetTool"},{"attributes":{"line_alpha":0.2,"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted-error"}},"id":"1492","type":"Line"},{"attributes":{"source":{"id":"1991","type":"ColumnDataSource"}},"id":"1998","type":"CDSView"},{"attributes":{"overlay":{"id":"1785","type":"BoxAnnotation"}},"id":"1712","type":"BoxZoomTool"},{"attributes":{"mantissas":[1,2,5],"max_interval":500.0,"num_minor_ticks":0},"id":"2930","type":"AdaptiveTicker"},{"attributes":{"data_source":{"id":"1991","type":"ColumnDataSource"},"glyph":{"id":"1994","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1996","type":"Line"},"nonselection_glyph":{"id":"1995","type":"Line"},"selection_glyph":null,"view":{"id":"1998","type":"CDSView"}},"id":"1997","type":"GlyphRenderer"},{"attributes":{"line_alpha":0.1,"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted-error"}},"id":"1491","type":"Line"},{"attributes":{"source":{"id":"1479","type":"ColumnDataSource"}},"id":"1486","type":"CDSView"},{"attributes":{},"id":"2016","type":"UnionRenderers"},{"attributes":{},"id":"1992","type":"Selection"},{"attributes":{},"id":"1488","type":"Selection"},{"attributes":{"days":[1,15]},"id":"1779","type":"DaysTicker"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"speed+error":{"__ndarray__":"6/gsib3gDkAAOImh9P0QQBz/Cx3i3RFAzz9stXwcEkDeiZSEx/kRQCmPRgj+aRFAc1AJWcidEUDrLCiJfqURQFrN9u/1uhFATvK+vTipEUCvhP+fI34SQLi9Iq1WcRRAtszeVBiWFkBEIMlR8VsYQNzpJMxxhRhAGDoKf6kPGEB5i45ftFwXQOrD/TfBlBZAPet2rQMgFkAlZmOh6J0WQJYT+zlY/hZAxnvXRJzUFkAw6O4nnS4WQA==","dtype":"float64","shape":[23]},"speed_plus_error":{"__ndarray__":"6/gsib3gDkAAOImh9P0QQBz/Cx3i3RFAzz9stXwcEkDeiZSEx/kRQCmPRgj+aRFAc1AJWcidEUDrLCiJfqURQFrN9u/1uhFATvK+vTipEUCvhP+fI34SQLi9Iq1WcRRAtszeVBiWFkBEIMlR8VsYQNzpJMxxhRhAGDoKf6kPGEB5i45ftFwXQOrD/TfBlBZAPet2rQMgFkAlZmOh6J0WQJYT+zlY/hZAxnvXRJzUFkAw6O4nnS4WQA==","dtype":"float64","shape":[23]}},"selected":{"id":"2000","type":"Selection"},"selection_policy":{"id":"2016","type":"UnionRenderers"}},"id":"1999","type":"ColumnDataSource"},{"attributes":{"line_color":"orange","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"speed-error"}},"id":"1994","type":"Line"},{"attributes":{"base":24,"mantissas":[1,2,4,6,8,12],"max_interval":43200000.0,"min_interval":3600000.0,"num_minor_ticks":0},"id":"2932","type":"AdaptiveTicker"},{"attributes":{"source":{"id":"1983","type":"ColumnDataSource"}},"id":"1990","type":"CDSView"},{"attributes":{"months":[0,6]},"id":"1526","type":"MonthsTicker"},{"attributes":{"base":60,"mantissas":[1,2,5,10,15,20,30],"max_interval":1800000.0,"min_interval":1000.0,"num_minor_ticks":0},"id":"2931","type":"AdaptiveTicker"},{"attributes":{"months":[0,2,4,6,8,10]},"id":"1524","type":"MonthsTicker"},{"attributes":{"base":24,"mantissas":[1,2,4,6,8,12],"max_interval":43200000.0,"min_interval":3600000.0,"num_minor_ticks":0},"id":"2020","type":"AdaptiveTicker"},{"attributes":{"children":[[{"id":"1433","subtype":"Figure","type":"Plot"},0,0],[{"id":"1690","subtype":"Figure","type":"Plot"},0,1],[{"id":"1946","subtype":"Figure","type":"Plot"},1,0],[{"id":"2179","subtype":"Figure","type":"Plot"},1,1],[{"id":"2496","subtype":"Figure","type":"Plot"},2,0],[{"id":"2727","subtype":"Figure","type":"Plot"},2,1]]},"id":"2944","type":"GridBox"},{"attributes":{"line_alpha":0.2,"line_color":"orange","line_width":4,"x":{"field":"index"},"y":{"field":"speed"}},"id":"1988","type":"Line"},{"attributes":{"days":[1,4,7,10,13,16,19,22,25,28]},"id":"2934","type":"DaysTicker"},{"attributes":{"data_source":{"id":"1983","type":"ColumnDataSource"},"glyph":{"id":"1986","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1988","type":"Line"},"nonselection_glyph":{"id":"1987","type":"Line"},"selection_glyph":null,"view":{"id":"1990","type":"CDSView"}},"id":"1989","type":"GlyphRenderer"},{"attributes":{"mantissas":[1,2,5],"max_interval":500.0,"num_minor_ticks":0},"id":"2018","type":"AdaptiveTicker"},{"attributes":{"grid_line_color":null,"ticker":{"id":"2189","type":"DatetimeTicker"}},"id":"2192","type":"Grid"},{"attributes":{"line_color":"orange","line_width":4,"x":{"field":"index"},"y":{"field":"speed"}},"id":"1986","type":"Line"},{"attributes":{"line_alpha":0.1,"line_color":"orange","line_width":4,"x":{"field":"index"},"y":{"field":"speed"}},"id":"1987","type":"Line"},{"attributes":{"days":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]},"id":"2933","type":"DaysTicker"},{"attributes":{"days":[1,8,15,22]},"id":"2935","type":"DaysTicker"},{"attributes":{"line_alpha":0.2,"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted_daily+error"}},"id":"1741","type":"Line"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"speed-error":{"__ndarray__":"zyJE1XugC0CTgbJyZGYOQK6mSh0uRhBA95r1Z+P7EEAcMwxWkyARQOWRanOqjRBA1XFakq3lEEAXlE2EywcRQLTsQiYbLRFAtqXc9BQtEUCV4YGOBbYRQBJRoL0H2xJAhMQx8xp/FEDynPDV6jwWQIij+G2QxRZAVG4HT45lFkDPTrWxlagVQKQ7iKA+7RRAhw/S7iKkFEBlYS+yeQAVQKY/vrjbRhVAjkKSUXcsFUDqbWFviIwUQA==","dtype":"float64","shape":[23]},"speed_hyphen_minus_error":{"__ndarray__":"zyJE1XugC0CTgbJyZGYOQK6mSh0uRhBA95r1Z+P7EEAcMwxWkyARQOWRanOqjRBA1XFakq3lEEAXlE2EywcRQLTsQiYbLRFAtqXc9BQtEUCV4YGOBbYRQBJRoL0H2xJAhMQx8xp/FEDynPDV6jwWQIij+G2QxRZAVG4HT45lFkDPTrWxlagVQKQ7iKA+7RRAhw/S7iKkFEBlYS+yeQAVQKY/vrjbRhVAjkKSUXcsFUDqbWFviIwUQA==","dtype":"float64","shape":[23]}},"selected":{"id":"1992","type":"Selection"},"selection_policy":{"id":"2014","type":"UnionRenderers"}},"id":"1991","type":"ColumnDataSource"},{"attributes":{"callback":null,"renderers":[{"id":"1742","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["predicted_daily+error","@{predicted_daily_plus_error}"]]},"id":"1687","type":"HoverTool"},{"attributes":{},"id":"1984","type":"Selection"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"speed":{"__ndarray__":"3Y04r5xADUBlPHFtkxgQQOVSKx0IEhFAY+2wDjCMEUB9XlBtLY0RQIeQ2D3U+xBAJOGx9bpBEUCB4LoGpVYRQAfdHIsIdBFAAsxN2SZrEUAis0CXFBoSQGWHYTUvphNAnUgIpJmKFUCb3twTbkwXQLLGDh2BpRdANtQI55s6F0Ak7aEIpYIWQMf/Quz/wBVAYn0kThNiFUDFY8kpMc8VQJ6pXPmZIhZAKt80y4kAFkANK6jLkl0VQA==","dtype":"float64","shape":[23]}},"selected":{"id":"1984","type":"Selection"},"selection_policy":{"id":"2012","type":"UnionRenderers"}},"id":"1983","type":"ColumnDataSource"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AABQsYUHd0IAABAX2Ad3QgAA0HwqCHdCAACQ4nwId0IAAFBIzwh3QgAAEK4hCXdCAADQE3QJd0IAAJB5xgl3QgAAUN8YCndCAAAQRWsKd0IAANCqvQp3QgAAkBAQC3dCAABQdmILd0IAABDctAt3QgAA0EEHDHdCAACQp1kMd0IAAGieqAx3QgAAKAT7DHdCAADoaU0Nd0IAAKjPnw13QgAAaDXyDXdCAAAom0QOd0IAAOgAlw53QgAAqGbpDndCAABozDsPd0IAACgyjg93QgAA6JfgD3dCAACo/TIQd0IAAGhjhRB3QgAAKMnXEHdCAADoLioRd0IAAKiUfBF3QgAAaPrOEXdCAAAoYCESd0IAAOjFcxJ3QgAAqCvGEndCAAAANN4Sd0IAAMCZMBN3QgAAgP+CE3dCAABAZdUTd0IAAADLJxR3QgAAwDB6FHdCAACAlswUd0IAAED8HhV3QgAAAGJxFXdCAADAx8MVd0IAAIAtFhZ3QgAAQJNoFndCAAAA+boWd0IAAMBeDRd3QgAAgMRfF3dCAABAKrIXd0IAAACQBBh3QgAAwPVWGHdCAACAW6kYd0IAAEDB+xh3QgAAACdOGXdCAADAjKAZd0IAAIDy8hl3QgAAQFhFGndCAAAAvpcad0IAAMAj6hp3QgAAgIk8G3dCAABA744bd0IAAABV4Rt3QgAAwLozHHdCAACAIIYcd0IAAECG2Bx3QgAAAOwqHXdCAADAUX0dd0IAAIC3zx13QgAAQB0iHndCAAAAg3Qed0IAAMDoxh53QgAAgE4ZH3dCAABAtGsfd0IAAAAavh93QgAAwH8QIHdCAACA5WIgd0IAAEBLtSB3QgAAALEHIXdCAADAFlohd0IAAIB8rCF3QgAAQOL+IXdCAAAASFEid0IAAMCtoyJ3QgAAgBP2IndCAABAeUgjd0IAAADfmiN3Qg==","dtype":"float64","shape":[89]},"index_dt_strings":["2020-02-24 18:00:00","2020-02-25 18:00:00","2020-02-26 18:00:00","2020-02-27 18:00:00","2020-02-28 18:00:00","2020-02-29 18:00:00","2020-03-01 18:00:00","2020-03-02 18:00:00","2020-03-03 18:00:00","2020-03-04 18:00:00","2020-03-05 18:00:00","2020-03-06 18:00:00","2020-03-07 18:00:00","2020-03-08 18:00:00","2020-03-09 18:00:00","2020-03-10 18:00:00","2020-03-11 17:00:00","2020-03-12 17:00:00","2020-03-13 17:00:00","2020-03-14 17:00:00","2020-03-15 17:00:00","2020-03-16 17:00:00","2020-03-17 17:00:00","2020-03-18 17:00:00","2020-03-19 17:00:00","2020-03-20 17:00:00","2020-03-21 17:00:00","2020-03-22 17:00:00","2020-03-23 17:00:00","2020-03-24 17:00:00","2020-03-25 17:00:00","2020-03-26 17:00:00","2020-03-27 17:00:00","2020-03-28 17:00:00","2020-03-29 17:00:00","2020-03-30 17:00:00","2020-03-31 00:00:00","2020-04-01 00:00:00","2020-04-02 00:00:00","2020-04-03 00:00:00","2020-04-04 00:00:00","2020-04-05 00:00:00","2020-04-06 00:00:00","2020-04-07 00:00:00","2020-04-08 00:00:00","2020-04-09 00:00:00","2020-04-10 00:00:00","2020-04-11 00:00:00","2020-04-12 00:00:00","2020-04-13 00:00:00","2020-04-14 00:00:00","2020-04-15 00:00:00","2020-04-16 00:00:00","2020-04-17 00:00:00","2020-04-18 00:00:00","2020-04-19 00:00:00","2020-04-20 00:00:00","2020-04-21 00:00:00","2020-04-22 00:00:00","2020-04-23 00:00:00","2020-04-24 00:00:00","2020-04-25 00:00:00","2020-04-26 00:00:00","2020-04-27 00:00:00","2020-04-28 00:00:00","2020-04-29 00:00:00","2020-04-30 00:00:00","2020-05-01 00:00:00","2020-05-02 00:00:00","2020-05-03 00:00:00","2020-05-04 00:00:00","2020-05-05 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-08 00:00:00","2020-05-09 00:00:00","2020-05-10 00:00:00","2020-05-11 00:00:00","2020-05-12 00:00:00","2020-05-13 00:00:00","2020-05-14 00:00:00","2020-05-15 00:00:00","2020-05-16 00:00:00","2020-05-17 00:00:00","2020-05-18 00:00:00","2020-05-19 00:00:00","2020-05-20 00:00:00","2020-05-21 00:00:00","2020-05-22 00:00:00"],"predicted_daily-error":{"__ndarray__":"AAAAAAAAAAB+/QtpYIdjQI+3ap7hU2dApgxZHm3Ya0Bn87Yo15pwQPanst6ZyHNAmb2Tx+KKd0DH+PNjyfl7QDdDQnsGmIBAr4tCxWqlg0Br/HTJlTSHQFboMEiGVYtAsUljOAAMkEBY09BARsWSQPCh1RqQ3JVAoOHHQ7hVmUCFWx+EdzGdQByVXjYbtqBAGyCEgk3+okCskZcR0WilQJpDhqUf6KdAGux0RqNoqkAy4rl8nNCsQErXpLSPAa9ACwQeiY5tsECh2d4yWx+xQEnRggrHibFAgsRVpQalsUCyg+PFD2+xQKiPKTTo67BAUwxnGQslsECamWJzEVCuQGEp25RaCaxAc42NxhKWqUC5Ke27ZROnQJt1dyIdmaRA66PiYLo4okB7+a6K7/ufQJmeW0rm35tAqKbDAJwkmEA3s7MFFsyUQLrdYjxz1JFAFdlrUxVyjkAMwU14veaJQBUiqLzM94VAOBrv+1KVgkAWvaSB0l5/QFosvVGhbXpAjTDQH6s6dkBOjSpqDaxyQJYTGCUtVW9AaWQb/4VDakC+wpJhQP9lQBVj6Xg3aWJAlFog6CnNXkBU2h/6tsBZQNXB9evbhVVA5vCxOkX7UUCwLq6PdwlOQAjWprLKFElAAdacf0rwREB4zvjjJnpBQBEcJJXYKz1AeFNGNIFXOEC6+rl4PU80QJ0a/8WN8TBA6GF+LqxELEC4VhbtTZQnQDYdZVO1qiNArtAlzApnIEAdm1rKwVsbQFoAi0el0BZA7BsqdHUGE0AmWcuKgboPQEC2aPuzdApA3l/xHREPBkBZ6kytTWQCQM4xFtjiqv4/xdajs2GR+T8CCQbywlD1PygD0Fv1xPE/Vl8SXoWg7T8CDp7CULLoP24Kt8NzluQ/XZ8Y0D0p4T/F/EyfkpvcPzgCATBl2Nc/i/J8nSzg0z8N7iVxAJHQPw==","dtype":"float64","shape":[89]},"predicted_daily_hyphen_minus_error":{"__ndarray__":"AAAAAAAAAAB+/QtpYIdjQI+3ap7hU2dApgxZHm3Ya0Bn87Yo15pwQPanst6ZyHNAmb2Tx+KKd0DH+PNjyfl7QDdDQnsGmIBAr4tCxWqlg0Br/HTJlTSHQFboMEiGVYtAsUljOAAMkEBY09BARsWSQPCh1RqQ3JVAoOHHQ7hVmUCFWx+EdzGdQByVXjYbtqBAGyCEgk3+okCskZcR0WilQJpDhqUf6KdAGux0RqNoqkAy4rl8nNCsQErXpLSPAa9ACwQeiY5tsECh2d4yWx+xQEnRggrHibFAgsRVpQalsUCyg+PFD2+xQKiPKTTo67BAUwxnGQslsECamWJzEVCuQGEp25RaCaxAc42NxhKWqUC5Ke27ZROnQJt1dyIdmaRA66PiYLo4okB7+a6K7/ufQJmeW0rm35tAqKbDAJwkmEA3s7MFFsyUQLrdYjxz1JFAFdlrUxVyjkAMwU14veaJQBUiqLzM94VAOBrv+1KVgkAWvaSB0l5/QFosvVGhbXpAjTDQH6s6dkBOjSpqDaxyQJYTGCUtVW9AaWQb/4VDakC+wpJhQP9lQBVj6Xg3aWJAlFog6CnNXkBU2h/6tsBZQNXB9evbhVVA5vCxOkX7UUCwLq6PdwlOQAjWprLKFElAAdacf0rwREB4zvjjJnpBQBEcJJXYKz1AeFNGNIFXOEC6+rl4PU80QJ0a/8WN8TBA6GF+LqxELEC4VhbtTZQnQDYdZVO1qiNArtAlzApnIEAdm1rKwVsbQFoAi0el0BZA7BsqdHUGE0AmWcuKgboPQEC2aPuzdApA3l/xHREPBkBZ6kytTWQCQM4xFtjiqv4/xdajs2GR+T8CCQbywlD1PygD0Fv1xPE/Vl8SXoWg7T8CDp7CULLoP24Kt8NzluQ/XZ8Y0D0p4T/F/EyfkpvcPzgCATBl2Nc/i/J8nSzg0z8N7iVxAJHQPw==","dtype":"float64","shape":[89]}},"selected":{"id":"1745","type":"Selection"},"selection_policy":{"id":"1769","type":"UnionRenderers"}},"id":"1744","type":"ColumnDataSource"},{"attributes":{"months":[0,4,8]},"id":"1525","type":"MonthsTicker"},{"attributes":{"days":[1,8,15,22]},"id":"1778","type":"DaysTicker"},{"attributes":{"line_alpha":0.2,"line_color":"orange","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"speed+error"}},"id":"2004","type":"Line"},{"attributes":{"base":60,"mantissas":[1,2,5,10,15,20,30],"max_interval":1800000.0,"min_interval":1000.0,"num_minor_ticks":0},"id":"2019","type":"AdaptiveTicker"},{"attributes":{},"id":"1709","type":"SaveTool"},{"attributes":{},"id":"2000","type":"Selection"},{"attributes":{"callback":null,"renderers":[{"id":"1750","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["predicted_daily-error","@{predicted_daily_hyphen_minus_error}"]]},"id":"1688","type":"HoverTool"},{"attributes":{},"id":"2014","type":"UnionRenderers"},{"attributes":{"days":[1,15]},"id":"2936","type":"DaysTicker"},{"attributes":{},"id":"1710","type":"PanTool"},{"attributes":{"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted-error"}},"id":"1490","type":"Line"},{"attributes":{"line_color":"orange","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"speed+error"}},"id":"2002","type":"Line"},{"attributes":{"months":[0,1,2,3,4,5,6,7,8,9,10,11]},"id":"2937","type":"MonthsTicker"},{"attributes":{"line_alpha":0.1,"line_color":"orange","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"speed+error"}},"id":"2003","type":"Line"},{"attributes":{"callback":null,"renderers":[{"id":"1758","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["daily","@{daily}"]]},"id":"1689","type":"HoverTool"},{"attributes":{"line_alpha":0.1,"line_color":"cyan","line_width":4,"x":{"field":"index"},"y":{"field":"max-day"}},"id":"2220","type":"Line"},{"attributes":{"months":[0,4,8]},"id":"2577","type":"MonthsTicker"},{"attributes":{},"id":"2519","type":"ResetTool"},{"attributes":{"line_alpha":0.2,"line_color":"cyan","line_width":4,"x":{"field":"index"},"y":{"field":"max-day"}},"id":"2221","type":"Line"},{"attributes":{},"id":"2233","type":"Selection"},{"attributes":{"base":60,"mantissas":[1,2,5,10,15,20,30],"max_interval":1800000.0,"min_interval":1000.0,"num_minor_ticks":0},"id":"2569","type":"AdaptiveTicker"},{"attributes":{"base":24,"mantissas":[1,2,4,6,8,12],"max_interval":43200000.0,"min_interval":3600000.0,"num_minor_ticks":0},"id":"2570","type":"AdaptiveTicker"},{"attributes":{"active_drag":"auto","active_inspect":"auto","active_multi":null,"active_scroll":"auto","active_tap":"auto","tools":[{"id":"2493","type":"HoverTool"},{"id":"2494","type":"HoverTool"},{"id":"2495","type":"HoverTool"},{"id":"2515","type":"SaveTool"},{"id":"2516","type":"PanTool"},{"id":"2517","type":"WheelZoomTool"},{"id":"2518","type":"BoxZoomTool"},{"id":"2519","type":"ResetTool"}]},"id":"2520","type":"Toolbar"},{"attributes":{},"id":"2564","type":"UnionRenderers"},{"attributes":{},"id":"2247","type":"UnionRenderers"},{"attributes":{"line_color":"cyan","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"max-day+error"}},"id":"2235","type":"Line"},{"attributes":{"data_source":{"id":"1736","type":"ColumnDataSource"},"glyph":{"id":"1739","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1741","type":"Line"},"nonselection_glyph":{"id":"1740","type":"Line"},"selection_glyph":null,"view":{"id":"1743","type":"CDSView"}},"id":"1742","type":"GlyphRenderer"},{"attributes":{},"id":"2249","type":"UnionRenderers"},{"attributes":{},"id":"1745","type":"Selection"},{"attributes":{"source":{"id":"1736","type":"ColumnDataSource"}},"id":"1743","type":"CDSView"},{"attributes":{"callback":null,"data":{"daily":{"__ndarray__":"AAAAAAAAAAAAAAAAAEBXQAAAAAAAgFNAAAAAAABAb0AAAAAAAMBtQAAAAAAAAG5AAAAAAACwgUAAAAAAAGB1QAAAAAAAIH1AAAAAAABYgkAAAAAAAAiIQAAAAAAAUIhAAAAAAABojkAAAAAAALiUQAAAAAAA+JhAAAAAAAC0nEAAAAAAAOyfQAAAAAAAkqFAAAAAAACIoEAAAAAAANalQAAAAAAASqZAAAAAAADSpkAAAAAAAMGlQAAAAACAYKxAAAAAAACAsUAAAAAAAD6yQAAAAAAA1bJAAAAAAADqrkAAAAAAAIitQAAAAAAAOKxAAAAAAABGq0AAAAAAANSuQAAAAAAAMbFAAAAAAACGrEAAAAAAALOkQAAAAAAAwJlAAAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh/AAAAAAAA+H8AAAAAAAD4fw==","dtype":"float64","shape":[89]},"index":{"__ndarray__":"AABQsYUHd0IAABAX2Ad3QgAA0HwqCHdCAACQ4nwId0IAAFBIzwh3QgAAEK4hCXdCAADQE3QJd0IAAJB5xgl3QgAAUN8YCndCAAAQRWsKd0IAANCqvQp3QgAAkBAQC3dCAABQdmILd0IAABDctAt3QgAA0EEHDHdCAACQp1kMd0IAAGieqAx3QgAAKAT7DHdCAADoaU0Nd0IAAKjPnw13QgAAaDXyDXdCAAAom0QOd0IAAOgAlw53QgAAqGbpDndCAABozDsPd0IAACgyjg93QgAA6JfgD3dCAACo/TIQd0IAAGhjhRB3QgAAKMnXEHdCAADoLioRd0IAAKiUfBF3QgAAaPrOEXdCAAAoYCESd0IAAOjFcxJ3QgAAqCvGEndCAAAANN4Sd0IAAMCZMBN3QgAAgP+CE3dCAABAZdUTd0IAAADLJxR3QgAAwDB6FHdCAACAlswUd0IAAED8HhV3QgAAAGJxFXdCAADAx8MVd0IAAIAtFhZ3QgAAQJNoFndCAAAA+boWd0IAAMBeDRd3QgAAgMRfF3dCAABAKrIXd0IAAACQBBh3QgAAwPVWGHdCAACAW6kYd0IAAEDB+xh3QgAAACdOGXdCAADAjKAZd0IAAIDy8hl3QgAAQFhFGndCAAAAvpcad0IAAMAj6hp3QgAAgIk8G3dCAABA744bd0IAAABV4Rt3QgAAwLozHHdCAACAIIYcd0IAAECG2Bx3QgAAAOwqHXdCAADAUX0dd0IAAIC3zx13QgAAQB0iHndCAAAAg3Qed0IAAMDoxh53QgAAgE4ZH3dCAABAtGsfd0IAAAAavh93QgAAwH8QIHdCAACA5WIgd0IAAEBLtSB3QgAAALEHIXdCAADAFlohd0IAAIB8rCF3QgAAQOL+IXdCAAAASFEid0IAAMCtoyJ3QgAAgBP2IndCAABAeUgjd0IAAADfmiN3Qg==","dtype":"float64","shape":[89]},"index_dt_strings":["2020-02-24 18:00:00","2020-02-25 18:00:00","2020-02-26 18:00:00","2020-02-27 18:00:00","2020-02-28 18:00:00","2020-02-29 18:00:00","2020-03-01 18:00:00","2020-03-02 18:00:00","2020-03-03 18:00:00","2020-03-04 18:00:00","2020-03-05 18:00:00","2020-03-06 18:00:00","2020-03-07 18:00:00","2020-03-08 18:00:00","2020-03-09 18:00:00","2020-03-10 18:00:00","2020-03-11 17:00:00","2020-03-12 17:00:00","2020-03-13 17:00:00","2020-03-14 17:00:00","2020-03-15 17:00:00","2020-03-16 17:00:00","2020-03-17 17:00:00","2020-03-18 17:00:00","2020-03-19 17:00:00","2020-03-20 17:00:00","2020-03-21 17:00:00","2020-03-22 17:00:00","2020-03-23 17:00:00","2020-03-24 17:00:00","2020-03-25 17:00:00","2020-03-26 17:00:00","2020-03-27 17:00:00","2020-03-28 17:00:00","2020-03-29 17:00:00","2020-03-30 17:00:00","2020-03-31 00:00:00","2020-04-01 00:00:00","2020-04-02 00:00:00","2020-04-03 00:00:00","2020-04-04 00:00:00","2020-04-05 00:00:00","2020-04-06 00:00:00","2020-04-07 00:00:00","2020-04-08 00:00:00","2020-04-09 00:00:00","2020-04-10 00:00:00","2020-04-11 00:00:00","2020-04-12 00:00:00","2020-04-13 00:00:00","2020-04-14 00:00:00","2020-04-15 00:00:00","2020-04-16 00:00:00","2020-04-17 00:00:00","2020-04-18 00:00:00","2020-04-19 00:00:00","2020-04-20 00:00:00","2020-04-21 00:00:00","2020-04-22 00:00:00","2020-04-23 00:00:00","2020-04-24 00:00:00","2020-04-25 00:00:00","2020-04-26 00:00:00","2020-04-27 00:00:00","2020-04-28 00:00:00","2020-04-29 00:00:00","2020-04-30 00:00:00","2020-05-01 00:00:00","2020-05-02 00:00:00","2020-05-03 00:00:00","2020-05-04 00:00:00","2020-05-05 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-08 00:00:00","2020-05-09 00:00:00","2020-05-10 00:00:00","2020-05-11 00:00:00","2020-05-12 00:00:00","2020-05-13 00:00:00","2020-05-14 00:00:00","2020-05-15 00:00:00","2020-05-16 00:00:00","2020-05-17 00:00:00","2020-05-18 00:00:00","2020-05-19 00:00:00","2020-05-20 00:00:00","2020-05-21 00:00:00","2020-05-22 00:00:00"]},"selected":{"id":"1753","type":"Selection"},"selection_policy":{"id":"1771","type":"UnionRenderers"}},"id":"1752","type":"ColumnDataSource"},{"attributes":{"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted_daily-error"}},"id":"1747","type":"Line"},{"attributes":{},"id":"2245","type":"UnionRenderers"},{"attributes":{"data_source":{"id":"2216","type":"ColumnDataSource"},"glyph":{"id":"2219","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"2221","type":"Line"},"nonselection_glyph":{"id":"2220","type":"Line"},"selection_glyph":null,"view":{"id":"2223","type":"CDSView"}},"id":"2222","type":"GlyphRenderer"},{"attributes":{},"id":"2515","type":"SaveTool"},{"attributes":{"months":[0,2,4,6,8,10]},"id":"2576","type":"MonthsTicker"},{"attributes":{},"id":"2562","type":"UnionRenderers"},{"attributes":{"line_color":"cyan","line_width":4,"x":{"field":"index"},"y":{"field":"max-day"}},"id":"2219","type":"Line"},{"attributes":{"days":[1,15]},"id":"2574","type":"DaysTicker"},{"attributes":{"days":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]},"id":"2571","type":"DaysTicker"},{"attributes":{"source":{"id":"2224","type":"ColumnDataSource"}},"id":"2231","type":"CDSView"},{"attributes":{},"id":"1456","type":"ResetTool"},{"attributes":{"months":[0,1,2,3,4,5,6,7,8,9,10,11]},"id":"2575","type":"MonthsTicker"},{"attributes":{"line_alpha":0.1,"line_color":"cyan","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"max-day-error"}},"id":"2228","type":"Line"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"max-day-error":{"__ndarray__":"AADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAAAA2LcNd0IAAMA9Cg53QgAAgKNcDndCAAAAbwEPd0IAAIA6pg93QgAAQKD4D3dCAACAOqYPd0IAAIA6pg93QgAAwNRTD3dCAADA1FMPd0IAAMDUUw93QgAAgDqmD3dCAACAOqYPd0IAAIA6pg93Qg==","dtype":"float64","shape":[23]},"max_hyphen_minus_day_hyphen_minus_error":{"__ndarray__":"AADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAAAA2LcNd0IAAMA9Cg53QgAAgKNcDndCAAAAbwEPd0IAAIA6pg93QgAAQKD4D3dCAACAOqYPd0IAAIA6pg93QgAAwNRTD3dCAADA1FMPd0IAAMDUUw93QgAAgDqmD3dCAACAOqYPd0IAAIA6pg93Qg==","dtype":"float64","shape":[23]},"max_hyphen_minus_day_hyphen_minus_error_dt_strings":["2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-19 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-20 00:00:00","2020-03-20 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00"]},"selected":{"id":"2225","type":"Selection"},"selection_policy":{"id":"2247","type":"UnionRenderers"}},"id":"2224","type":"ColumnDataSource"},{"attributes":{"overlay":{"id":"2580","type":"BoxAnnotation"}},"id":"2518","type":"BoxZoomTool"},{"attributes":{"data_source":{"id":"2224","type":"ColumnDataSource"},"glyph":{"id":"2227","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"2229","type":"Line"},"nonselection_glyph":{"id":"2228","type":"Line"},"selection_glyph":null,"view":{"id":"2231","type":"CDSView"}},"id":"2230","type":"GlyphRenderer"},{"attributes":{"data_source":{"id":"2232","type":"ColumnDataSource"},"glyph":{"id":"2235","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"2237","type":"Line"},"nonselection_glyph":{"id":"2236","type":"Line"},"selection_glyph":null,"view":{"id":"2239","type":"CDSView"}},"id":"2238","type":"GlyphRenderer"},{"attributes":{"mantissas":[1,2,5],"max_interval":500.0,"num_minor_ticks":0},"id":"2251","type":"AdaptiveTicker"},{"attributes":{"line_alpha":0.2,"line_color":"cyan","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"max-day-error"}},"id":"2229","type":"Line"},{"attributes":{"source":{"id":"2232","type":"ColumnDataSource"}},"id":"2239","type":"CDSView"},{"attributes":{"line_color":"cyan","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"max-day-error"}},"id":"2227","type":"Line"},{"attributes":{},"id":"2517","type":"WheelZoomTool"},{"attributes":{"days":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]},"id":"2021","type":"DaysTicker"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"max-day":{"__ndarray__":"AADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAAAA2LcNd0IAAMA9Cg53QgAAQAmvDndCAADA1FMPd0IAAAAGSxB3QgAAAAZLEHdCAABAoPgPd0IAAIA6pg93QgAAgDqmD3dCAADA1FMPd0IAAIA6pg93QgAAgDqmD3dCAACAOqYPd0IAAIA6pg93Qg==","dtype":"float64","shape":[23]},"max_hyphen_minus_day":{"__ndarray__":"AADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAAAA2LcNd0IAAMA9Cg53QgAAQAmvDndCAADA1FMPd0IAAAAGSxB3QgAAAAZLEHdCAABAoPgPd0IAAIA6pg93QgAAgDqmD3dCAADA1FMPd0IAAIA6pg93QgAAgDqmD3dCAACAOqYPd0IAAIA6pg93Qg==","dtype":"float64","shape":[23]},"max_hyphen_minus_day_dt_strings":["2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-18 00:00:00","2020-03-20 00:00:00","2020-03-23 00:00:00","2020-03-23 00:00:00","2020-03-22 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00"]},"selected":{"id":"2217","type":"Selection"},"selection_policy":{"id":"2245","type":"UnionRenderers"}},"id":"2216","type":"ColumnDataSource"},{"attributes":{},"id":"2516","type":"PanTool"},{"attributes":{"source":{"id":"2216","type":"ColumnDataSource"}},"id":"2223","type":"CDSView"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"max-day+error":{"__ndarray__":"AADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAPQoOd0IAAICjXA53QgAAAG8BD3dCAABAoPgPd0IAAMBrnRB3QgAAwGudEHdCAAAABksQd0IAAECg+A93QgAAgDqmD3dCAACAOqYPd0IAAIA6pg93QgAAgDqmD3dCAACAOqYPd0IAAIA6pg93Qg==","dtype":"float64","shape":[23]},"max_hyphen_minus_day_plus_error":{"__ndarray__":"AADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAD3cLd0IAAMAPdwt3QgAAwA93C3dCAADAPQoOd0IAAICjXA53QgAAAG8BD3dCAABAoPgPd0IAAMBrnRB3QgAAwGudEHdCAAAABksQd0IAAECg+A93QgAAgDqmD3dCAACAOqYPd0IAAIA6pg93QgAAgDqmD3dCAACAOqYPd0IAAIA6pg93Qg==","dtype":"float64","shape":[23]},"max_hyphen_minus_day_plus_error_dt_strings":["2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-08 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-19 00:00:00","2020-03-22 00:00:00","2020-03-24 00:00:00","2020-03-24 00:00:00","2020-03-23 00:00:00","2020-03-22 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00","2020-03-21 00:00:00"]},"selected":{"id":"2233","type":"Selection"},"selection_policy":{"id":"2249","type":"UnionRenderers"}},"id":"2232","type":"ColumnDataSource"},{"attributes":{},"id":"2225","type":"Selection"},{"attributes":{},"id":"2566","type":"UnionRenderers"},{"attributes":{"line_alpha":0.1,"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted_daily-error"}},"id":"1748","type":"Line"},{"attributes":{"days":[1,4,7,10,13,16,19,22,25,28]},"id":"2572","type":"DaysTicker"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"1468","type":"DatetimeTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"1443","type":"DatetimeTicker"}},"id":"1442","type":"DatetimeAxis"},{"attributes":{"line_alpha":0.1,"line_color":"cyan","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"max-day+error"}},"id":"2236","type":"Line"},{"attributes":{"mantissas":[1,2,5],"max_interval":500.0,"num_minor_ticks":0},"id":"2568","type":"AdaptiveTicker"},{"attributes":{"line_alpha":0.2,"line_color":"cyan","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"max-day+error"}},"id":"2237","type":"Line"},{"attributes":{"overlay":{"id":"1528","type":"BoxAnnotation"}},"id":"1455","type":"BoxZoomTool"},{"attributes":{"days":[1,8,15,22]},"id":"2573","type":"DaysTicker"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"2532","type":"BasicTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"2511","type":"BasicTicker"}},"id":"2510","type":"LinearAxis"},{"attributes":{"months":[0,4,8]},"id":"2272","type":"MonthsTicker"},{"attributes":{"source":{"id":"1999","type":"ColumnDataSource"}},"id":"2006","type":"CDSView"},{"attributes":{},"id":"1784","type":"YearsTicker"},{"attributes":{"callback":null,"renderers":[{"id":"1989","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["speed","@{speed}"]]},"id":"1943","type":"HoverTool"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"2530","type":"DatetimeTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"2506","type":"DatetimeTicker"}},"id":"2505","type":"DatetimeAxis"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AABQsYUHd0IAABAX2Ad3QgAA0HwqCHdCAACQ4nwId0IAAFBIzwh3QgAAEK4hCXdCAADQE3QJd0IAAJB5xgl3QgAAUN8YCndCAAAQRWsKd0IAANCqvQp3QgAAkBAQC3dCAABQdmILd0IAABDctAt3QgAA0EEHDHdCAACQp1kMd0IAAGieqAx3QgAAKAT7DHdCAADoaU0Nd0IAAKjPnw13QgAAaDXyDXdCAAAom0QOd0IAAOgAlw53QgAAqGbpDndCAABozDsPd0IAACgyjg93QgAA6JfgD3dCAACo/TIQd0IAAGhjhRB3QgAAKMnXEHdCAADoLioRd0IAAKiUfBF3QgAAaPrOEXdCAAAoYCESd0IAAOjFcxJ3QgAAqCvGEndCAAAANN4Sd0IAAMCZMBN3QgAAgP+CE3dCAABAZdUTd0IAAADLJxR3QgAAwDB6FHdCAACAlswUd0IAAED8HhV3QgAAAGJxFXdCAADAx8MVd0IAAIAtFhZ3QgAAQJNoFndCAAAA+boWd0IAAMBeDRd3QgAAgMRfF3dCAABAKrIXd0IAAACQBBh3QgAAwPVWGHdCAACAW6kYd0IAAEDB+xh3QgAAACdOGXdCAADAjKAZd0IAAIDy8hl3QgAAQFhFGndCAAAAvpcad0IAAMAj6hp3QgAAgIk8G3dCAABA744bd0IAAABV4Rt3QgAAwLozHHdCAACAIIYcd0IAAECG2Bx3QgAAAOwqHXdCAADAUX0dd0IAAIC3zx13QgAAQB0iHndCAAAAg3Qed0IAAMDoxh53QgAAgE4ZH3dCAABAtGsfd0IAAAAavh93QgAAwH8QIHdCAACA5WIgd0IAAEBLtSB3QgAAALEHIXdCAADAFlohd0IAAIB8rCF3QgAAQOL+IXdCAAAASFEid0IAAMCtoyJ3QgAAgBP2IndCAABAeUgjd0IAAADfmiN3Qg==","dtype":"float64","shape":[89]},"index_dt_strings":["2020-02-24 18:00:00","2020-02-25 18:00:00","2020-02-26 18:00:00","2020-02-27 18:00:00","2020-02-28 18:00:00","2020-02-29 18:00:00","2020-03-01 18:00:00","2020-03-02 18:00:00","2020-03-03 18:00:00","2020-03-04 18:00:00","2020-03-05 18:00:00","2020-03-06 18:00:00","2020-03-07 18:00:00","2020-03-08 18:00:00","2020-03-09 18:00:00","2020-03-10 18:00:00","2020-03-11 17:00:00","2020-03-12 17:00:00","2020-03-13 17:00:00","2020-03-14 17:00:00","2020-03-15 17:00:00","2020-03-16 17:00:00","2020-03-17 17:00:00","2020-03-18 17:00:00","2020-03-19 17:00:00","2020-03-20 17:00:00","2020-03-21 17:00:00","2020-03-22 17:00:00","2020-03-23 17:00:00","2020-03-24 17:00:00","2020-03-25 17:00:00","2020-03-26 17:00:00","2020-03-27 17:00:00","2020-03-28 17:00:00","2020-03-29 17:00:00","2020-03-30 17:00:00","2020-03-31 00:00:00","2020-04-01 00:00:00","2020-04-02 00:00:00","2020-04-03 00:00:00","2020-04-04 00:00:00","2020-04-05 00:00:00","2020-04-06 00:00:00","2020-04-07 00:00:00","2020-04-08 00:00:00","2020-04-09 00:00:00","2020-04-10 00:00:00","2020-04-11 00:00:00","2020-04-12 00:00:00","2020-04-13 00:00:00","2020-04-14 00:00:00","2020-04-15 00:00:00","2020-04-16 00:00:00","2020-04-17 00:00:00","2020-04-18 00:00:00","2020-04-19 00:00:00","2020-04-20 00:00:00","2020-04-21 00:00:00","2020-04-22 00:00:00","2020-04-23 00:00:00","2020-04-24 00:00:00","2020-04-25 00:00:00","2020-04-26 00:00:00","2020-04-27 00:00:00","2020-04-28 00:00:00","2020-04-29 00:00:00","2020-04-30 00:00:00","2020-05-01 00:00:00","2020-05-02 00:00:00","2020-05-03 00:00:00","2020-05-04 00:00:00","2020-05-05 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-08 00:00:00","2020-05-09 00:00:00","2020-05-10 00:00:00","2020-05-11 00:00:00","2020-05-12 00:00:00","2020-05-13 00:00:00","2020-05-14 00:00:00","2020-05-15 00:00:00","2020-05-16 00:00:00","2020-05-17 00:00:00","2020-05-18 00:00:00","2020-05-19 00:00:00","2020-05-20 00:00:00","2020-05-21 00:00:00","2020-05-22 00:00:00"],"predicted_daily+error":{"__ndarray__":"AAAAAAAAAAAUaPIIRqhcQDkJB7w+XmFAsrPmE5kJZUAROovS7nVpQIW2XB54yG5AH1FSdT+WckDZFavp6ml2QAICE5qI+3pA4WyiMFU1gEANbArB3WyDQGrrDFqJNodA/gHWJaeki0DAuA1QLmSQQIBsVbTcV5NAIEAzioexlkAbsn6iw3CaQAiO2haYjp5ArXTqtct9oUAMNJh7WM+jQMZ1dhq2KqZAZpSF49B6qED+/8S7+qeqQEa3XphCmaxACvt5fQw2rkB+TcWQFmivQNeLDTffDrBADhAdCgomsEA8jnvJPvCvQDBOQyLdD69A+3kijUi4rUAGmAru6vyrQJ8aDXEM9alAzUIvDJm5p0BHCQRxP2OlQGXugRb2CKNAFfRsGqy+oECFO1lqPyidQOcbwUd0KJlAWHiEn2mKlUBJf1bCs1KSQIux5vwIAI9A6z82FSgaikD0cKd3buSFQOsrtvslTYJAkB+egtqDfkDqCB5UsGF5QKbniQRAEnVAc7/rhwZ3cUBkhQaYsOlsQGrIMaDK52dAly/NhSO/Y0BCAfNSZExgQNZRAz364lpAbK0SQQcqVkCs3Yl2KUNSQFVMipoYFU5AM67YU4PESEBQ8YeZr2JEQPgJrJ0txkBA/3MdCjyZO0APAzOJ+rI2QO9DgiN6qjJAEBn5mXexLkCMSrH2KjspQMWKUMbgvCRAGJ4qWd4KIUCQUjsu2gEcQJXFyhSeAhdApV7WAgfnEkDGyZliZQ0PQEz/Bi+zgAlAKMizz0nxBEDapsTnHDIBQIGT7L1DPPw/REDn2pIt9z9OK8AYSwbzP2Sci/w/Ou8/dlKQgAqg6T/77acRjgblP6/5g74WQOE/VEGzlalM3D/84/POezbXPyTr6YrhCNM/jYJNMnI3zz92Bja9pZjJP5D7TWaI+8Q/6hrWPnIywT/NR2hcay+8Pw==","dtype":"float64","shape":[89]},"predicted_daily_plus_error":{"__ndarray__":"AAAAAAAAAAAUaPIIRqhcQDkJB7w+XmFAsrPmE5kJZUAROovS7nVpQIW2XB54yG5AH1FSdT+WckDZFavp6ml2QAICE5qI+3pA4WyiMFU1gEANbArB3WyDQGrrDFqJNodA/gHWJaeki0DAuA1QLmSQQIBsVbTcV5NAIEAzioexlkAbsn6iw3CaQAiO2haYjp5ArXTqtct9oUAMNJh7WM+jQMZ1dhq2KqZAZpSF49B6qED+/8S7+qeqQEa3XphCmaxACvt5fQw2rkB+TcWQFmivQNeLDTffDrBADhAdCgomsEA8jnvJPvCvQDBOQyLdD69A+3kijUi4rUAGmAru6vyrQJ8aDXEM9alAzUIvDJm5p0BHCQRxP2OlQGXugRb2CKNAFfRsGqy+oECFO1lqPyidQOcbwUd0KJlAWHiEn2mKlUBJf1bCs1KSQIux5vwIAI9A6z82FSgaikD0cKd3buSFQOsrtvslTYJAkB+egtqDfkDqCB5UsGF5QKbniQRAEnVAc7/rhwZ3cUBkhQaYsOlsQGrIMaDK52dAly/NhSO/Y0BCAfNSZExgQNZRAz364lpAbK0SQQcqVkCs3Yl2KUNSQFVMipoYFU5AM67YU4PESEBQ8YeZr2JEQPgJrJ0txkBA/3MdCjyZO0APAzOJ+rI2QO9DgiN6qjJAEBn5mXexLkCMSrH2KjspQMWKUMbgvCRAGJ4qWd4KIUCQUjsu2gEcQJXFyhSeAhdApV7WAgfnEkDGyZliZQ0PQEz/Bi+zgAlAKMizz0nxBEDapsTnHDIBQIGT7L1DPPw/REDn2pIt9z9OK8AYSwbzP2Sci/w/Ou8/dlKQgAqg6T/77acRjgblP6/5g74WQOE/VEGzlalM3D/84/POezbXPyTr6YrhCNM/jYJNMnI3zz92Bja9pZjJP5D7TWaI+8Q/6hrWPnIywT/NR2hcay+8Pw==","dtype":"float64","shape":[89]}},"selected":{"id":"1737","type":"Selection"},"selection_policy":{"id":"1767","type":"UnionRenderers"}},"id":"1736","type":"ColumnDataSource"},{"attributes":{},"id":"2012","type":"UnionRenderers"},{"attributes":{"bottom_units":"screen","fill_alpha":{"value":0.5},"fill_color":{"value":"lightgrey"},"left_units":"screen","level":"overlay","line_alpha":{"value":1.0},"line_color":{"value":"black"},"line_dash":[4,4],"line_width":{"value":2},"render_mode":"css","right_units":"screen","top_units":"screen"},"id":"1785","type":"BoxAnnotation"},{"attributes":{},"id":"2215","type":"DatetimeTickFormatter"},{"attributes":{"days":[1,4,7,10,13,16,19,22,25,28]},"id":"2022","type":"DaysTicker"},{"attributes":{"months":[0,2,4,6,8,10]},"id":"2271","type":"MonthsTicker"},{"attributes":{"text":"Infection total-infected","text_color":{"value":"black"},"text_font_size":{"value":"12pt"}},"id":"2497","type":"Title"},{"attributes":{"months":[0,6]},"id":"2273","type":"MonthsTicker"},{"attributes":{"base":24,"mantissas":[1,2,4,6,8,12],"max_interval":43200000.0,"min_interval":3600000.0,"num_minor_ticks":0},"id":"2920","type":"AdaptiveTicker"},{"attributes":{"months":[0,2,4,6,8,10]},"id":"2259","type":"MonthsTicker"},{"attributes":{},"id":"2213","type":"DatetimeTickFormatter"},{"attributes":{"months":[0,1,2,3,4,5,6,7,8,9,10,11]},"id":"2025","type":"MonthsTicker"},{"attributes":{"base":60,"mantissas":[1,2,5,10,15,20,30],"max_interval":1800000.0,"min_interval":1000.0,"num_minor_ticks":0},"id":"2919","type":"AdaptiveTicker"},{"attributes":{"num_minor_ticks":5,"tickers":[{"id":"2251","type":"AdaptiveTicker"},{"id":"2252","type":"AdaptiveTicker"},{"id":"2253","type":"AdaptiveTicker"},{"id":"2254","type":"DaysTicker"},{"id":"2255","type":"DaysTicker"},{"id":"2256","type":"DaysTicker"},{"id":"2257","type":"DaysTicker"},{"id":"2258","type":"MonthsTicker"},{"id":"2259","type":"MonthsTicker"},{"id":"2260","type":"MonthsTicker"},{"id":"2261","type":"MonthsTicker"},{"id":"2262","type":"YearsTicker"}]},"id":"2194","type":"DatetimeTicker"},{"attributes":{"dimension":1,"grid_line_color":null,"ticker":{"id":"2511","type":"BasicTicker"}},"id":"2514","type":"Grid"},{"attributes":{},"id":"2202","type":"ResetTool"},{"attributes":{"months":[0,6]},"id":"1783","type":"MonthsTicker"},{"attributes":{},"id":"2200","type":"WheelZoomTool"},{"attributes":{"align":null,"below":[{"id":"1699","type":"DatetimeAxis"}],"center":[{"id":"1703","type":"Grid"},{"id":"1708","type":"Grid"}],"left":[{"id":"1704","type":"LinearAxis"}],"margin":null,"min_border_bottom":10,"min_border_left":10,"min_border_right":10,"min_border_top":10,"plot_height":300,"plot_width":700,"renderers":[{"id":"1734","type":"GlyphRenderer"},{"id":"1742","type":"GlyphRenderer"},{"id":"1750","type":"GlyphRenderer"},{"id":"1758","type":"GlyphRenderer"}],"sizing_mode":"fixed","title":{"id":"1691","type":"Title"},"toolbar":{"id":"1714","type":"Toolbar"},"toolbar_location":null,"x_range":{"id":"1427","type":"Range1d"},"x_scale":{"id":"1695","type":"LinearScale"},"y_range":{"id":"1685","type":"Range1d"},"y_scale":{"id":"1697","type":"LinearScale"}},"id":"1690","subtype":"Figure","type":"Plot"},{"attributes":{},"id":"2199","type":"PanTool"},{"attributes":{},"id":"2503","type":"LinearScale"},{"attributes":{"months":[0,1,2,3,4,5,6,7,8,9,10,11]},"id":"2925","type":"MonthsTicker"},{"attributes":{"overlay":{"id":"2275","type":"BoxAnnotation"}},"id":"2201","type":"BoxZoomTool"},{"attributes":{"dimension":1,"grid_line_color":null,"ticker":{"id":"2194","type":"DatetimeTicker"}},"id":"2197","type":"Grid"},{"attributes":{},"id":"2198","type":"SaveTool"},{"attributes":{"active_drag":"auto","active_inspect":"auto","active_multi":null,"active_scroll":"auto","active_tap":"auto","tools":[{"id":"2176","type":"HoverTool"},{"id":"2177","type":"HoverTool"},{"id":"2178","type":"HoverTool"},{"id":"2198","type":"SaveTool"},{"id":"2199","type":"PanTool"},{"id":"2200","type":"WheelZoomTool"},{"id":"2201","type":"BoxZoomTool"},{"id":"2202","type":"ResetTool"}]},"id":"2203","type":"Toolbar"},{"attributes":{},"id":"2501","type":"LinearScale"},{"attributes":{"months":[0,4,8]},"id":"2027","type":"MonthsTicker"},{"attributes":{"days":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]},"id":"2921","type":"DaysTicker"},{"attributes":{},"id":"2274","type":"YearsTicker"},{"attributes":{"callback":null,"end":6.130316915276548,"reset_end":6.130316915276548,"reset_start":3.453361192838521,"start":3.453361192838521,"tags":[[["speed","speed",null]]]},"id":"1942","type":"Range1d"},{"attributes":{"bottom_units":"screen","fill_alpha":{"value":0.5},"fill_color":{"value":"lightgrey"},"left_units":"screen","level":"overlay","line_alpha":{"value":1.0},"line_color":{"value":"black"},"line_dash":[4,4],"line_width":{"value":2},"render_mode":"css","right_units":"screen","top_units":"screen"},"id":"2275","type":"BoxAnnotation"},{"attributes":{"num_minor_ticks":5,"tickers":[{"id":"1773","type":"AdaptiveTicker"},{"id":"1774","type":"AdaptiveTicker"},{"id":"1775","type":"AdaptiveTicker"},{"id":"1776","type":"DaysTicker"},{"id":"1777","type":"DaysTicker"},{"id":"1778","type":"DaysTicker"},{"id":"1779","type":"DaysTicker"},{"id":"1780","type":"MonthsTicker"},{"id":"1781","type":"MonthsTicker"},{"id":"1782","type":"MonthsTicker"},{"id":"1783","type":"MonthsTicker"},{"id":"1784","type":"YearsTicker"}]},"id":"1700","type":"DatetimeTicker"},{"attributes":{"callback":null,"renderers":[{"id":"1997","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["speed-error","@{speed_hyphen_minus_error}"]]},"id":"1944","type":"HoverTool"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"2215","type":"DatetimeTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"2194","type":"DatetimeTicker"}},"id":"2193","type":"DatetimeAxis"},{"attributes":{"callback":null,"renderers":[{"id":"2005","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["speed+error","@{speed_plus_error}"]]},"id":"1945","type":"HoverTool"},{"attributes":{"days":[1,15]},"id":"2924","type":"DaysTicker"},{"attributes":{"months":[0,1,2,3,4,5,6,7,8,9,10,11]},"id":"1523","type":"MonthsTicker"},{"attributes":{"days":[1,4,7,10,13,16,19,22,25,28]},"id":"2922","type":"DaysTicker"},{"attributes":{},"id":"1725","type":"DatetimeTickFormatter"},{"attributes":{"days":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]},"id":"2266","type":"DaysTicker"},{"attributes":{"days":[1,15]},"id":"2269","type":"DaysTicker"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"1725","type":"DatetimeTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"1700","type":"DatetimeTicker"}},"id":"1699","type":"DatetimeAxis"},{"attributes":{"num_minor_ticks":5,"tickers":[{"id":"2568","type":"AdaptiveTicker"},{"id":"2569","type":"AdaptiveTicker"},{"id":"2570","type":"AdaptiveTicker"},{"id":"2571","type":"DaysTicker"},{"id":"2572","type":"DaysTicker"},{"id":"2573","type":"DaysTicker"},{"id":"2574","type":"DaysTicker"},{"id":"2575","type":"MonthsTicker"},{"id":"2576","type":"MonthsTicker"},{"id":"2577","type":"MonthsTicker"},{"id":"2578","type":"MonthsTicker"},{"id":"2579","type":"YearsTicker"}]},"id":"2506","type":"DatetimeTicker"},{"attributes":{"months":[0,1,2,3,4,5,6,7,8,9,10,11]},"id":"2270","type":"MonthsTicker"},{"attributes":{"days":[1,4,7,10,13,16,19,22,25,28]},"id":"2267","type":"DaysTicker"},{"attributes":{"days":[1,8,15,22]},"id":"2923","type":"DaysTicker"},{"attributes":{"days":[1,8,15,22]},"id":"2268","type":"DaysTicker"},{"attributes":{"data_source":{"id":"1999","type":"ColumnDataSource"},"glyph":{"id":"2002","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"2004","type":"Line"},"nonselection_glyph":{"id":"2003","type":"Line"},"selection_glyph":null,"view":{"id":"2006","type":"CDSView"}},"id":"2005","type":"GlyphRenderer"},{"attributes":{"text":"Infection / data+predicted / daily","text_color":{"value":"black"},"text_font_size":{"value":"12pt"}},"id":"1691","type":"Title"},{"attributes":{"grid_line_color":null,"ticker":{"id":"2506","type":"DatetimeTicker"}},"id":"2509","type":"Grid"},{"attributes":{},"id":"2511","type":"BasicTicker"},{"attributes":{},"id":"1438","type":"LinearScale"},{"attributes":{"days":[1,8,15,22]},"id":"2023","type":"DaysTicker"},{"attributes":{"base":24,"mantissas":[1,2,4,6,8,12],"max_interval":43200000.0,"min_interval":3600000.0,"num_minor_ticks":0},"id":"2265","type":"AdaptiveTicker"},{"attributes":{},"id":"1727","type":"BasicTickFormatter"},{"attributes":{"base":60,"mantissas":[1,2,5,10,15,20,30],"max_interval":1800000.0,"min_interval":1000.0,"num_minor_ticks":0},"id":"2264","type":"AdaptiveTicker"},{"attributes":{},"id":"1440","type":"LinearScale"},{"attributes":{"days":[1,15]},"id":"2024","type":"DaysTicker"},{"attributes":{},"id":"1695","type":"LinearScale"},{"attributes":{"months":[0,4,8]},"id":"2260","type":"MonthsTicker"},{"attributes":{"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted_daily+error"}},"id":"1739","type":"Line"},{"attributes":{"text":"Infection / data+predicted / cumulative","text_color":{"value":"black"},"text_font_size":{"value":"12pt"}},"id":"1434","type":"Title"},{"attributes":{},"id":"2262","type":"YearsTicker"},{"attributes":{"mantissas":[1,2,5],"max_interval":500.0,"num_minor_ticks":0},"id":"2263","type":"AdaptiveTicker"},{"attributes":{},"id":"1697","type":"LinearScale"},{"attributes":{"months":[0,2,4,6,8,10]},"id":"2026","type":"MonthsTicker"},{"attributes":{"months":[0,6]},"id":"2261","type":"MonthsTicker"},{"attributes":{"toolbar":{"id":"2945","type":"ProxyToolbar"},"toolbar_location":"above"},"id":"2946","type":"ToolbarBox"},{"attributes":{},"id":"1951","type":"LinearScale"},{"attributes":{},"id":"1982","type":"BasicTickFormatter"},{"attributes":{"text":"Infection speed","text_color":{"value":"black"},"text_font_size":{"value":"12pt"}},"id":"1947","type":"Title"},{"attributes":{},"id":"1953","type":"LinearScale"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"total-infected":{"__ndarray__":"9uYasDkY0UD3SHLpX63dQJpFkGcRg+dAZh0IijGS7ECqIaadLVPrQHVdN21syOVAfgNTj1sd50Bc/r7fdMznQM1ql4O/b+hAajARIM5X6ECAEggf59PqQE/V7zD5ifBA3Uz6aqRi9UAAC4iQGjf7QP5pfy4oovtAfR98R+Oa+UC1dYVHy6D3QHGEIbFuR/ZA77WdM/Xp9UAWmL8tjJH2QPFulEQqFvdAkKbI9tkR90DpOwPDrZX2QA==","dtype":"float64","shape":[23]},"total_hyphen_minus_infected":{"__ndarray__":"9uYasDkY0UD3SHLpX63dQJpFkGcRg+dAZh0IijGS7ECqIaadLVPrQHVdN21syOVAfgNTj1sd50Bc/r7fdMznQM1ql4O/b+hAajARIM5X6ECAEggf59PqQE/V7zD5ifBA3Uz6aqRi9UAAC4iQGjf7QP5pfy4oovtAfR98R+Oa+UC1dYVHy6D3QHGEIbFuR/ZA77WdM/Xp9UAWmL8tjJH2QPFulEQqFvdAkKbI9tkR90DpOwPDrZX2QA==","dtype":"float64","shape":[23]}},"selected":{"id":"2534","type":"Selection"},"selection_policy":{"id":"2562","type":"UnionRenderers"}},"id":"2533","type":"ColumnDataSource"},{"attributes":{},"id":"2534","type":"Selection"},{"attributes":{"line_color":"green","line_width":4,"x":{"field":"index"},"y":{"field":"total-infected"}},"id":"2536","type":"Line"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"1470","type":"BasicTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"1448","type":"BasicTicker"}},"id":"1447","type":"LinearAxis"},{"attributes":{"overlay":{"id":"2942","type":"BoxAnnotation"}},"id":"2749","type":"BoxZoomTool"},{"attributes":{"line_alpha":0.2,"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted_daily-error"}},"id":"1749","type":"Line"},{"attributes":{"grid_line_color":null,"ticker":{"id":"1443","type":"DatetimeTicker"}},"id":"1446","type":"Grid"},{"attributes":{},"id":"1448","type":"BasicTicker"},{"attributes":{"source":{"id":"2549","type":"ColumnDataSource"}},"id":"2556","type":"CDSView"},{"attributes":{},"id":"2767","type":"DatetimeTickFormatter"},{"attributes":{"active_drag":"auto","active_inspect":"auto","active_multi":null,"active_scroll":"auto","active_tap":"auto","tools":[{"id":"1686","type":"HoverTool"},{"id":"1687","type":"HoverTool"},{"id":"1688","type":"HoverTool"},{"id":"1689","type":"HoverTool"},{"id":"1709","type":"SaveTool"},{"id":"1710","type":"PanTool"},{"id":"1711","type":"WheelZoomTool"},{"id":"1712","type":"BoxZoomTool"},{"id":"1713","type":"ResetTool"}]},"id":"1714","type":"Toolbar"},{"attributes":{},"id":"1496","type":"Selection"},{"attributes":{"line_color":"blue","line_width":4,"x":{"field":"index"},"y":{"field":"predicted_daily"}},"id":"1731","type":"Line"},{"attributes":{"line_alpha":0.1,"line_color":"blue","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"predicted_daily+error"}},"id":"1740","type":"Line"},{"attributes":{"line_alpha":0.1,"line_color":"blue","line_width":4,"x":{"field":"index"},"y":{"field":"predicted_daily"}},"id":"1732","type":"Line"},{"attributes":{"line_alpha":0.2,"line_color":"blue","line_width":4,"x":{"field":"index"},"y":{"field":"predicted_daily"}},"id":"1733","type":"Line"},{"attributes":{"data_source":{"id":"1728","type":"ColumnDataSource"},"glyph":{"id":"1731","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1733","type":"Line"},"nonselection_glyph":{"id":"1732","type":"Line"},"selection_glyph":null,"view":{"id":"1735","type":"CDSView"}},"id":"1734","type":"GlyphRenderer"},{"attributes":{"dimension":1,"grid_line_color":null,"ticker":{"id":"1448","type":"BasicTicker"}},"id":"1451","type":"Grid"},{"attributes":{"source":{"id":"1728","type":"ColumnDataSource"}},"id":"1735","type":"CDSView"},{"attributes":{"axis_label":"","bounds":"auto","formatter":{"id":"2213","type":"DatetimeTickFormatter"},"major_label_orientation":"horizontal","ticker":{"id":"2189","type":"DatetimeTicker"}},"id":"2188","type":"DatetimeAxis"},{"attributes":{},"id":"2186","type":"LinearScale"},{"attributes":{"num_minor_ticks":5,"tickers":[{"id":"2263","type":"AdaptiveTicker"},{"id":"2264","type":"AdaptiveTicker"},{"id":"2265","type":"AdaptiveTicker"},{"id":"2266","type":"DaysTicker"},{"id":"2267","type":"DaysTicker"},{"id":"2268","type":"DaysTicker"},{"id":"2269","type":"DaysTicker"},{"id":"2270","type":"MonthsTicker"},{"id":"2271","type":"MonthsTicker"},{"id":"2272","type":"MonthsTicker"},{"id":"2273","type":"MonthsTicker"},{"id":"2274","type":"YearsTicker"}]},"id":"2189","type":"DatetimeTicker"},{"attributes":{},"id":"2184","type":"LinearScale"},{"attributes":{"data_source":{"id":"2549","type":"ColumnDataSource"},"glyph":{"id":"2552","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"2554","type":"Line"},"nonselection_glyph":{"id":"2553","type":"Line"},"selection_glyph":null,"view":{"id":"2556","type":"CDSView"}},"id":"2555","type":"GlyphRenderer"},{"attributes":{"days":[1,8,15,22]},"id":"1521","type":"DaysTicker"},{"attributes":{"text":"Infection max-day","text_color":{"value":"black"},"text_font_size":{"value":"12pt"}},"id":"2180","type":"Title"},{"attributes":{"align":null,"below":[{"id":"2188","type":"DatetimeAxis"}],"center":[{"id":"2192","type":"Grid"},{"id":"2197","type":"Grid"}],"left":[{"id":"2193","type":"DatetimeAxis"}],"margin":null,"min_border_bottom":10,"min_border_left":10,"min_border_right":10,"min_border_top":10,"plot_height":300,"plot_width":700,"renderers":[{"id":"2222","type":"GlyphRenderer"},{"id":"2230","type":"GlyphRenderer"},{"id":"2238","type":"GlyphRenderer"}],"sizing_mode":"fixed","title":{"id":"2180","type":"Title"},"toolbar":{"id":"2203","type":"Toolbar"},"toolbar_location":null,"x_range":{"id":"1427","type":"Range1d"},"x_scale":{"id":"2184","type":"LinearScale"},"y_range":{"id":"2175","type":"Range1d"},"y_scale":{"id":"2186","type":"LinearScale"}},"id":"2179","subtype":"Figure","type":"Plot"},{"attributes":{},"id":"1472","type":"Selection"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AABQsYUHd0IAABAX2Ad3QgAA0HwqCHdCAACQ4nwId0IAAFBIzwh3QgAAEK4hCXdCAADQE3QJd0IAAJB5xgl3QgAAUN8YCndCAAAQRWsKd0IAANCqvQp3QgAAkBAQC3dCAABQdmILd0IAABDctAt3QgAA0EEHDHdCAACQp1kMd0IAAGieqAx3QgAAKAT7DHdCAADoaU0Nd0IAAKjPnw13QgAAaDXyDXdCAAAom0QOd0IAAOgAlw53QgAAqGbpDndCAABozDsPd0IAACgyjg93QgAA6JfgD3dCAACo/TIQd0IAAGhjhRB3QgAAKMnXEHdCAADoLioRd0IAAKiUfBF3QgAAaPrOEXdCAAAoYCESd0IAAOjFcxJ3QgAAqCvGEndCAAAANN4Sd0IAAMCZMBN3QgAAgP+CE3dCAABAZdUTd0IAAADLJxR3QgAAwDB6FHdCAACAlswUd0IAAED8HhV3QgAAAGJxFXdCAADAx8MVd0IAAIAtFhZ3QgAAQJNoFndCAAAA+boWd0IAAMBeDRd3QgAAgMRfF3dCAABAKrIXd0IAAACQBBh3QgAAwPVWGHdCAACAW6kYd0IAAEDB+xh3QgAAACdOGXdCAADAjKAZd0IAAIDy8hl3QgAAQFhFGndCAAAAvpcad0IAAMAj6hp3QgAAgIk8G3dCAABA744bd0IAAABV4Rt3QgAAwLozHHdCAACAIIYcd0IAAECG2Bx3QgAAAOwqHXdCAADAUX0dd0IAAIC3zx13QgAAQB0iHndCAAAAg3Qed0IAAMDoxh53QgAAgE4ZH3dCAABAtGsfd0IAAAAavh93QgAAwH8QIHdCAACA5WIgd0IAAEBLtSB3QgAAALEHIXdCAADAFlohd0IAAIB8rCF3QgAAQOL+IXdCAAAASFEid0IAAMCtoyJ3QgAAgBP2IndCAABAeUgjd0IAAADfmiN3Qg==","dtype":"float64","shape":[89]},"index_dt_strings":["2020-02-24 18:00:00","2020-02-25 18:00:00","2020-02-26 18:00:00","2020-02-27 18:00:00","2020-02-28 18:00:00","2020-02-29 18:00:00","2020-03-01 18:00:00","2020-03-02 18:00:00","2020-03-03 18:00:00","2020-03-04 18:00:00","2020-03-05 18:00:00","2020-03-06 18:00:00","2020-03-07 18:00:00","2020-03-08 18:00:00","2020-03-09 18:00:00","2020-03-10 18:00:00","2020-03-11 17:00:00","2020-03-12 17:00:00","2020-03-13 17:00:00","2020-03-14 17:00:00","2020-03-15 17:00:00","2020-03-16 17:00:00","2020-03-17 17:00:00","2020-03-18 17:00:00","2020-03-19 17:00:00","2020-03-20 17:00:00","2020-03-21 17:00:00","2020-03-22 17:00:00","2020-03-23 17:00:00","2020-03-24 17:00:00","2020-03-25 17:00:00","2020-03-26 17:00:00","2020-03-27 17:00:00","2020-03-28 17:00:00","2020-03-29 17:00:00","2020-03-30 17:00:00","2020-03-31 00:00:00","2020-04-01 00:00:00","2020-04-02 00:00:00","2020-04-03 00:00:00","2020-04-04 00:00:00","2020-04-05 00:00:00","2020-04-06 00:00:00","2020-04-07 00:00:00","2020-04-08 00:00:00","2020-04-09 00:00:00","2020-04-10 00:00:00","2020-04-11 00:00:00","2020-04-12 00:00:00","2020-04-13 00:00:00","2020-04-14 00:00:00","2020-04-15 00:00:00","2020-04-16 00:00:00","2020-04-17 00:00:00","2020-04-18 00:00:00","2020-04-19 00:00:00","2020-04-20 00:00:00","2020-04-21 00:00:00","2020-04-22 00:00:00","2020-04-23 00:00:00","2020-04-24 00:00:00","2020-04-25 00:00:00","2020-04-26 00:00:00","2020-04-27 00:00:00","2020-04-28 00:00:00","2020-04-29 00:00:00","2020-04-30 00:00:00","2020-05-01 00:00:00","2020-05-02 00:00:00","2020-05-03 00:00:00","2020-05-04 00:00:00","2020-05-05 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-08 00:00:00","2020-05-09 00:00:00","2020-05-10 00:00:00","2020-05-11 00:00:00","2020-05-12 00:00:00","2020-05-13 00:00:00","2020-05-14 00:00:00","2020-05-15 00:00:00","2020-05-16 00:00:00","2020-05-17 00:00:00","2020-05-18 00:00:00","2020-05-19 00:00:00","2020-05-20 00:00:00","2020-05-21 00:00:00","2020-05-22 00:00:00"],"predicted+error":{"__ndarray__":"V4mh5DexgECEVB8prkaEQPLvrqvSnohAkR8hKgTijUDMuVRoSyCSQIUpE+8a+pVAdPQfIbagmkCGM7pCUx6gQCKz3lXLfqNA3KZbsZWNp0BeVpiu4mqsQE03MWzDHbFA1nsA24iUtEDnI+SPzLC4QH7BjNKKi71Am+0ElomfwUBxuTDvA/PEQJZIR7TzzMhA3gauqoo4zUCwo7pcGh/RQJ0DkUAa8dNAXmBq5pwR10BcAPHAlXzaQFui7dw2Kt5A5FNlqHoH4UA0ss+jAQ7jQGxOja0bIOVACNMJWJ0050BH1GlPZELpQLFs2gnpQOtAYQKyirQo7UDnjZ7Os/PuQFal5T2zTvBAyVJyvHQR8UDoYhq+cMHxQGedK22mXvJAaSBV2KLp8kBRDVzHXmPzQJA3BCgdzfNA92NR00wo9ED3HGBEb3b0QGGLSdsEufRAAFEIi37x9EBcRrdYNCH1QOGgxddfSfVAnoF3uxlr9UDkDaenWYf1QAYHt4X3nvVASUAOyq2y9UBaZzg5HMP1QLibJNzK0PVA+k6L7izc9UBloJOko+X1QMy91rWA7fVAf4TFpAj09UD03EHAdPn1QEdyd+L0/fVAx7lg8bAB9kA5b1MnygT2QMx9+ilcB/ZAlKu19X0J9kCzSuyjQgv2QL0UWhG6DPZAyntmafEN9kAX7gKa8w72QDws57TJD/ZAVNxaQHsQ9kByoB16DhH2QFZ0YY+IEfZAGShCy+0R9kDQHT29QRL2QKH+GVmHEvZAxRbBEcES9kD4jOju8BL2QFsDgJ8YE/ZA3OX3iDkT9kCERp7TVBP2QI1TPXVrE/ZAXYx0OX4T9kDrxlLJjRP2QMlP7LCaE/ZAtKplZKUT9kCgoyFErhP2QBBm6J+1E/ZA/igMursT9kDMam/JwBP2QAxXuPvEE/ZAd0aBdsgT9kBDEjNZyxP2QA==","dtype":"float64","shape":[89]},"predicted_plus_error":{"__ndarray__":"V4mh5DexgECEVB8prkaEQPLvrqvSnohAkR8hKgTijUDMuVRoSyCSQIUpE+8a+pVAdPQfIbagmkCGM7pCUx6gQCKz3lXLfqNA3KZbsZWNp0BeVpiu4mqsQE03MWzDHbFA1nsA24iUtEDnI+SPzLC4QH7BjNKKi71Am+0ElomfwUBxuTDvA/PEQJZIR7TzzMhA3gauqoo4zUCwo7pcGh/RQJ0DkUAa8dNAXmBq5pwR10BcAPHAlXzaQFui7dw2Kt5A5FNlqHoH4UA0ss+jAQ7jQGxOja0bIOVACNMJWJ0050BH1GlPZELpQLFs2gnpQOtAYQKyirQo7UDnjZ7Os/PuQFal5T2zTvBAyVJyvHQR8UDoYhq+cMHxQGedK22mXvJAaSBV2KLp8kBRDVzHXmPzQJA3BCgdzfNA92NR00wo9ED3HGBEb3b0QGGLSdsEufRAAFEIi37x9EBcRrdYNCH1QOGgxddfSfVAnoF3uxlr9UDkDaenWYf1QAYHt4X3nvVASUAOyq2y9UBaZzg5HMP1QLibJNzK0PVA+k6L7izc9UBloJOko+X1QMy91rWA7fVAf4TFpAj09UD03EHAdPn1QEdyd+L0/fVAx7lg8bAB9kA5b1MnygT2QMx9+ilcB/ZAlKu19X0J9kCzSuyjQgv2QL0UWhG6DPZAyntmafEN9kAX7gKa8w72QDws57TJD/ZAVNxaQHsQ9kByoB16DhH2QFZ0YY+IEfZAGShCy+0R9kDQHT29QRL2QKH+GVmHEvZAxRbBEcES9kD4jOju8BL2QFsDgJ8YE/ZA3OX3iDkT9kCERp7TVBP2QI1TPXVrE/ZAXYx0OX4T9kDrxlLJjRP2QMlP7LCaE/ZAtKplZKUT9kCgoyFErhP2QBBm6J+1E/ZA/igMursT9kDMam/JwBP2QAxXuPvEE/ZAd0aBdsgT9kBDEjNZyxP2QA==","dtype":"float64","shape":[89]}},"selected":{"id":"1480","type":"Selection"},"selection_policy":{"id":"1510","type":"UnionRenderers"}},"id":"1479","type":"ColumnDataSource"},{"attributes":{"line_color":"green","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"total-infected+error"}},"id":"2552","type":"Line"},{"attributes":{},"id":"2747","type":"PanTool"},{"attributes":{"callback":null,"renderers":[{"id":"2230","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["max-day-error","@{max_hyphen_minus_day_hyphen_minus_error_dt_strings}"]]},"id":"2177","type":"HoverTool"},{"attributes":{"callback":null,"end":1585008000000.0,"reset_end":1585008000000.0,"reset_start":1583625600000.0,"start":1583625600000.0,"tags":[[["max-day","max-day",null]]]},"id":"2175","type":"Range1d"},{"attributes":{"line_alpha":0.2,"line_color":"green","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"total-infected+error"}},"id":"2554","type":"Line"},{"attributes":{"days":[1,15]},"id":"1522","type":"DaysTicker"},{"attributes":{"months":[0,6]},"id":"2578","type":"MonthsTicker"},{"attributes":{"line_alpha":0.1,"line_color":"green","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"total-infected+error"}},"id":"2553","type":"Line"},{"attributes":{"bottom_units":"screen","fill_alpha":{"value":0.5},"fill_color":{"value":"lightgrey"},"left_units":"screen","level":"overlay","line_alpha":{"value":1.0},"line_color":{"value":"black"},"line_dash":[4,4],"line_width":{"value":2},"render_mode":"css","right_units":"screen","top_units":"screen"},"id":"2580","type":"BoxAnnotation"},{"attributes":{"days":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]},"id":"1519","type":"DaysTicker"},{"attributes":{},"id":"2579","type":"YearsTicker"},{"attributes":{},"id":"2748","type":"WheelZoomTool"},{"attributes":{"callback":null,"renderers":[{"id":"2222","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["max-day","@{max_hyphen_minus_day_dt_strings}"]]},"id":"2176","type":"HoverTool"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AABQsYUHd0IAABAX2Ad3QgAA0HwqCHdCAACQ4nwId0IAAFBIzwh3QgAAEK4hCXdCAADQE3QJd0IAAJB5xgl3QgAAUN8YCndCAAAQRWsKd0IAANCqvQp3QgAAkBAQC3dCAABQdmILd0IAABDctAt3QgAA0EEHDHdCAACQp1kMd0IAAGieqAx3QgAAKAT7DHdCAADoaU0Nd0IAAKjPnw13QgAAaDXyDXdCAAAom0QOd0IAAOgAlw53QgAAqGbpDndCAABozDsPd0IAACgyjg93QgAA6JfgD3dCAACo/TIQd0IAAGhjhRB3QgAAKMnXEHdCAADoLioRd0IAAKiUfBF3QgAAaPrOEXdCAAAoYCESd0IAAOjFcxJ3QgAAqCvGEndCAAAANN4Sd0IAAMCZMBN3QgAAgP+CE3dCAABAZdUTd0IAAADLJxR3QgAAwDB6FHdCAACAlswUd0IAAED8HhV3QgAAAGJxFXdCAADAx8MVd0IAAIAtFhZ3QgAAQJNoFndCAAAA+boWd0IAAMBeDRd3QgAAgMRfF3dCAABAKrIXd0IAAACQBBh3QgAAwPVWGHdCAACAW6kYd0IAAEDB+xh3QgAAACdOGXdCAADAjKAZd0IAAIDy8hl3QgAAQFhFGndCAAAAvpcad0IAAMAj6hp3QgAAgIk8G3dCAABA744bd0IAAABV4Rt3QgAAwLozHHdCAACAIIYcd0IAAECG2Bx3QgAAAOwqHXdCAADAUX0dd0IAAIC3zx13QgAAQB0iHndCAAAAg3Qed0IAAMDoxh53QgAAgE4ZH3dCAABAtGsfd0IAAAAavh93QgAAwH8QIHdCAACA5WIgd0IAAEBLtSB3QgAAALEHIXdCAADAFlohd0IAAIB8rCF3QgAAQOL+IXdCAAAASFEid0IAAMCtoyJ3QgAAgBP2IndCAABAeUgjd0IAAADfmiN3Qg==","dtype":"float64","shape":[89]},"index_dt_strings":["2020-02-24 18:00:00","2020-02-25 18:00:00","2020-02-26 18:00:00","2020-02-27 18:00:00","2020-02-28 18:00:00","2020-02-29 18:00:00","2020-03-01 18:00:00","2020-03-02 18:00:00","2020-03-03 18:00:00","2020-03-04 18:00:00","2020-03-05 18:00:00","2020-03-06 18:00:00","2020-03-07 18:00:00","2020-03-08 18:00:00","2020-03-09 18:00:00","2020-03-10 18:00:00","2020-03-11 17:00:00","2020-03-12 17:00:00","2020-03-13 17:00:00","2020-03-14 17:00:00","2020-03-15 17:00:00","2020-03-16 17:00:00","2020-03-17 17:00:00","2020-03-18 17:00:00","2020-03-19 17:00:00","2020-03-20 17:00:00","2020-03-21 17:00:00","2020-03-22 17:00:00","2020-03-23 17:00:00","2020-03-24 17:00:00","2020-03-25 17:00:00","2020-03-26 17:00:00","2020-03-27 17:00:00","2020-03-28 17:00:00","2020-03-29 17:00:00","2020-03-30 17:00:00","2020-03-31 00:00:00","2020-04-01 00:00:00","2020-04-02 00:00:00","2020-04-03 00:00:00","2020-04-04 00:00:00","2020-04-05 00:00:00","2020-04-06 00:00:00","2020-04-07 00:00:00","2020-04-08 00:00:00","2020-04-09 00:00:00","2020-04-10 00:00:00","2020-04-11 00:00:00","2020-04-12 00:00:00","2020-04-13 00:00:00","2020-04-14 00:00:00","2020-04-15 00:00:00","2020-04-16 00:00:00","2020-04-17 00:00:00","2020-04-18 00:00:00","2020-04-19 00:00:00","2020-04-20 00:00:00","2020-04-21 00:00:00","2020-04-22 00:00:00","2020-04-23 00:00:00","2020-04-24 00:00:00","2020-04-25 00:00:00","2020-04-26 00:00:00","2020-04-27 00:00:00","2020-04-28 00:00:00","2020-04-29 00:00:00","2020-04-30 00:00:00","2020-05-01 00:00:00","2020-05-02 00:00:00","2020-05-03 00:00:00","2020-05-04 00:00:00","2020-05-05 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-08 00:00:00","2020-05-09 00:00:00","2020-05-10 00:00:00","2020-05-11 00:00:00","2020-05-12 00:00:00","2020-05-13 00:00:00","2020-05-14 00:00:00","2020-05-15 00:00:00","2020-05-16 00:00:00","2020-05-17 00:00:00","2020-05-18 00:00:00","2020-05-19 00:00:00","2020-05-20 00:00:00","2020-05-21 00:00:00","2020-05-22 00:00:00"],"predicted":{"__ndarray__":"EwYt8BO8hEBErN1dhPeIQF3kK2nIDY5ANO65lwQVkkBCgPlpvr+VQKmgtSdZJZpAgGJSb31pn0AqIoP8+dqiQLGajFWznaZAwzlJVAsZq0Bpk8zinDawQKVw8NxdX7NA+zlaVigbt0B+C3boVoC7QKa2LUFyU8BAwmgNPuZTw0CcSXfwCc7GQCDFsNi2zcpAuZe+/zldz0A4SLKYH0LSQM4TsvRMI9VA1rtRN4RR2ED5qdmqDcnbQOLiqc+6gt9AiqFStOa54UCQuQYcHcfjQGK/H4Cn4OVAq+wWi1j950BYAcF9yxPqQMS0FeoIG+xAWTkV4BsL7kDmoiDDg93vQIPyp327xvBAxOXyLPqL8UCQqqbB1D3yQCCQig5d3PJAgM53qDpo80Dq3mEGg+LzQF8YhruTTPRAnajGxvGn9EACvVZaL/b0QG9pzEnYOPVAiAs1h2Rx9UC6ACWzL6H1QAhf3aV0yfVAMp0a5kvr9UCVfoUnrAf2QB+iMBhsH/ZAF4AE8UQz9kD/lt9j1UP2QHbp0KGkUfZAmyMyTCVd9kAMRV81uGb2QM8fheKubvZAMEaqyE119kBnW7hEznr2QMSCv1Fgf/ZAjRacAiyD9kDvqQ7FUob2QB2vk3TwiPZA1vkbQxyL9kD7gl596Yz2QC5I9C9ojvZARVLcsaWP9kDa8nMYrZD2QBU8ZZiHkfZAuVqP1jyS9kCJa3sr05L2QLPijNtPk/ZA9xjGRbeT9kBGEK8KDZT2QGPOrCxUlPZAa4bhKo+U9kD7+H8XwJT2QFrTVarolPZAv14wUAqV9kBsmKM3JpX2QJoDpVs9lfZAkH1YjFCV9kD9el12YJX2QIbY3ahtlfZAwWKUmniV9kBHDfitgZX2QJIvsTSJlfZAvcZ3co+V9kB6dnSflJX2QN+iOeqYlfZAfFpmeZyV9kCEwwFtn5X2QA==","dtype":"float64","shape":[89]}},"selected":{"id":"1472","type":"Selection"},"selection_policy":{"id":"1508","type":"UnionRenderers"}},"id":"1471","type":"ColumnDataSource"},{"attributes":{"days":[1,4,7,10,13,16,19,22,25,28]},"id":"1520","type":"DaysTicker"},{"attributes":{"tools":[{"id":"1429","type":"HoverTool"},{"id":"1430","type":"HoverTool"},{"id":"1431","type":"HoverTool"},{"id":"1432","type":"HoverTool"},{"id":"1452","type":"SaveTool"},{"id":"1453","type":"PanTool"},{"id":"1454","type":"WheelZoomTool"},{"id":"1455","type":"BoxZoomTool"},{"id":"1456","type":"ResetTool"},{"id":"1686","type":"HoverTool"},{"id":"1687","type":"HoverTool"},{"id":"1688","type":"HoverTool"},{"id":"1689","type":"HoverTool"},{"id":"1709","type":"SaveTool"},{"id":"1710","type":"PanTool"},{"id":"1711","type":"WheelZoomTool"},{"id":"1712","type":"BoxZoomTool"},{"id":"1713","type":"ResetTool"},{"id":"1943","type":"HoverTool"},{"id":"1944","type":"HoverTool"},{"id":"1945","type":"HoverTool"},{"id":"1965","type":"SaveTool"},{"id":"1966","type":"PanTool"},{"id":"1967","type":"WheelZoomTool"},{"id":"1968","type":"BoxZoomTool"},{"id":"1969","type":"ResetTool"},{"id":"2176","type":"HoverTool"},{"id":"2177","type":"HoverTool"},{"id":"2178","type":"HoverTool"},{"id":"2198","type":"SaveTool"},{"id":"2199","type":"PanTool"},{"id":"2200","type":"WheelZoomTool"},{"id":"2201","type":"BoxZoomTool"},{"id":"2202","type":"ResetTool"},{"id":"2493","type":"HoverTool"},{"id":"2494","type":"HoverTool"},{"id":"2495","type":"HoverTool"},{"id":"2515","type":"SaveTool"},{"id":"2516","type":"PanTool"},{"id":"2517","type":"WheelZoomTool"},{"id":"2518","type":"BoxZoomTool"},{"id":"2519","type":"ResetTool"},{"id":"2726","type":"HoverTool"},{"id":"2746","type":"SaveTool"},{"id":"2747","type":"PanTool"},{"id":"2748","type":"WheelZoomTool"},{"id":"2749","type":"BoxZoomTool"},{"id":"2750","type":"ResetTool"}]},"id":"2945","type":"ProxyToolbar"},{"attributes":{"align":null,"below":[{"id":"1955","type":"DatetimeAxis"}],"center":[{"id":"1959","type":"Grid"},{"id":"1964","type":"Grid"}],"left":[{"id":"1960","type":"LinearAxis"}],"margin":null,"min_border_bottom":10,"min_border_left":10,"min_border_right":10,"min_border_top":10,"plot_height":300,"plot_width":700,"renderers":[{"id":"1989","type":"GlyphRenderer"},{"id":"1997","type":"GlyphRenderer"},{"id":"2005","type":"GlyphRenderer"}],"sizing_mode":"fixed","title":{"id":"1947","type":"Title"},"toolbar":{"id":"1970","type":"Toolbar"},"toolbar_location":null,"x_range":{"id":"1427","type":"Range1d"},"x_scale":{"id":"1951","type":"LinearScale"},"y_range":{"id":"1942","type":"Range1d"},"y_scale":{"id":"1953","type":"LinearScale"}},"id":"1946","subtype":"Figure","type":"Plot"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"total-infected-error":{"__ndarray__":"ujD7eKWQy0DxT5SmELDUQIKCv7Khu95AKLnOrIqx5UBPpEQK9YDnQMIo0iavzeNAZWZu+SaX5UDxi7+xsajmQHSy9nLjiudAI5yNLwWz50A4eT5cj8TpQAMn5we6SO5AGmz6sz2+8kBv+NC+gnr3QMlnWMLD6/hAmMr0fZm390BAa6EfZjn2QB4LqbfoPfVAAxPMe4wj9UBjJV8mQMv1QI0DqIOwVvZAQ8PTzBdy9kDO6vhc2RP2QA==","dtype":"float64","shape":[23]},"total_hyphen_minus_infected_hyphen_minus_error":{"__ndarray__":"ujD7eKWQy0DxT5SmELDUQIKCv7Khu95AKLnOrIqx5UBPpEQK9YDnQMIo0iavzeNAZWZu+SaX5UDxi7+xsajmQHSy9nLjiudAI5yNLwWz50A4eT5cj8TpQAMn5we6SO5AGmz6sz2+8kBv+NC+gnr3QMlnWMLD6/hAmMr0fZm390BAa6EfZjn2QB4LqbfoPfVAAxPMe4wj9UBjJV8mQMv1QI0DqIOwVvZAQ8PTzBdy9kDO6vhc2RP2QA==","dtype":"float64","shape":[23]}},"selected":{"id":"2542","type":"Selection"},"selection_policy":{"id":"2564","type":"UnionRenderers"}},"id":"2541","type":"ColumnDataSource"},{"attributes":{"callback":null,"renderers":[{"id":"2238","type":"GlyphRenderer"}],"tags":["hv_created"],"tooltips":[["index","@{index_dt_strings}"],["max-day+error","@{max_hyphen_minus_day_plus_error_dt_strings}"]]},"id":"2178","type":"HoverTool"},{"attributes":{},"id":"2769","type":"DatetimeTickFormatter"},{"attributes":{"months":[0,1,2,3,4,5,6,7,8,9,10,11]},"id":"2258","type":"MonthsTicker"},{"attributes":{},"id":"1769","type":"UnionRenderers"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AADAD3cLd0IAAIB1yQt3QgAAQNsbDHdCAAAAQW4Md0IAAMCmwAx3QgAAgAwTDXdCAABAcmUNd0IAAADYtw13QgAAwD0KDndCAACAo1wOd0IAAEAJrw53QgAAAG8BD3dCAADA1FMPd0IAAIA6pg93QgAAQKD4D3dCAAAABksQd0IAAMBrnRB3QgAAgNHvEHdCAABAN0IRd0IAAACdlBF3QgAAwALnEXdCAACAaDkSd0IAAEDOixJ3Qg==","dtype":"float64","shape":[23]},"index_dt_strings":["2020-03-08 00:00:00","2020-03-09 00:00:00","2020-03-10 00:00:00","2020-03-11 00:00:00","2020-03-12 00:00:00","2020-03-13 00:00:00","2020-03-14 00:00:00","2020-03-15 00:00:00","2020-03-16 00:00:00","2020-03-17 00:00:00","2020-03-18 00:00:00","2020-03-19 00:00:00","2020-03-20 00:00:00","2020-03-21 00:00:00","2020-03-22 00:00:00","2020-03-23 00:00:00","2020-03-24 00:00:00","2020-03-25 00:00:00","2020-03-26 00:00:00","2020-03-27 00:00:00","2020-03-28 00:00:00","2020-03-29 00:00:00","2020-03-30 00:00:00"],"total-infected+error":{"__ndarray__":"jzW4oyBo1ED+ICiWV1XjQPPJwPVRqO9A0sCgM2y58UAFnwcxZiXvQCiSnLMpw+dAl6A3JZCj6EDHcL4NOPDoQCYjOJSbVOlAscSUEJf86EDIq9HhPuPrQB0X7F2V7/FAoC36IQsH+ECRHT9isvP+QDNsppqMWP5AYnQDES1++0AqgGlvMAj5QMT9mar0UPdA21hv612w9kDJCiA12Ff3QFXagAWk1fdA3Ym9IJyx90AEjQ0pghf3QA==","dtype":"float64","shape":[23]},"total_hyphen_minus_infected_plus_error":{"__ndarray__":"jzW4oyBo1ED+ICiWV1XjQPPJwPVRqO9A0sCgM2y58UAFnwcxZiXvQCiSnLMpw+dAl6A3JZCj6EDHcL4NOPDoQCYjOJSbVOlAscSUEJf86EDIq9HhPuPrQB0X7F2V7/FAoC36IQsH+ECRHT9isvP+QDNsppqMWP5AYnQDES1++0AqgGlvMAj5QMT9mar0UPdA21hv612w9kDJCiA12Ff3QFXagAWk1fdA3Ym9IJyx90AEjQ0pghf3QA==","dtype":"float64","shape":[23]}},"selected":{"id":"2550","type":"Selection"},"selection_policy":{"id":"2566","type":"UnionRenderers"}},"id":"2549","type":"ColumnDataSource"},{"attributes":{},"id":"1771","type":"UnionRenderers"},{"attributes":{"data_source":{"id":"1744","type":"ColumnDataSource"},"glyph":{"id":"1747","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1749","type":"Line"},"nonselection_glyph":{"id":"1748","type":"Line"},"selection_glyph":null,"view":{"id":"1751","type":"CDSView"}},"id":"1750","type":"GlyphRenderer"},{"attributes":{"line_alpha":0.2,"line_color":"blue","line_width":4,"x":{"field":"index"},"y":{"field":"predicted"}},"id":"1476","type":"Line"},{"attributes":{"line_alpha":0.1,"line_color":"green","line_width":4,"x":{"field":"index"},"y":{"field":"total-infected"}},"id":"2537","type":"Line"},{"attributes":{},"id":"2750","type":"ResetTool"},{"attributes":{"source":{"id":"1471","type":"ColumnDataSource"}},"id":"1478","type":"CDSView"},{"attributes":{"source":{"id":"2758","type":"ColumnDataSource"}},"id":"2765","type":"CDSView"},{"attributes":{},"id":"1468","type":"DatetimeTickFormatter"},{"attributes":{"text":"Day of 0 Infection","text_color":{"value":"black"},"text_font_size":{"value":"12pt"}},"id":"2728","type":"Title"},{"attributes":{"base":60,"mantissas":[1,2,5,10,15,20,30],"max_interval":1800000.0,"min_interval":1000.0,"num_minor_ticks":0},"id":"1774","type":"AdaptiveTicker"},{"attributes":{"align":null,"below":[{"id":"1442","type":"DatetimeAxis"}],"center":[{"id":"1446","type":"Grid"},{"id":"1451","type":"Grid"}],"left":[{"id":"1447","type":"LinearAxis"}],"margin":null,"min_border_bottom":10,"min_border_left":10,"min_border_right":10,"min_border_top":10,"plot_height":300,"plot_width":700,"renderers":[{"id":"1477","type":"GlyphRenderer"},{"id":"1485","type":"GlyphRenderer"},{"id":"1493","type":"GlyphRenderer"},{"id":"1501","type":"GlyphRenderer"}],"sizing_mode":"fixed","title":{"id":"1434","type":"Title"},"toolbar":{"id":"1457","type":"Toolbar"},"toolbar_location":null,"x_range":{"id":"1427","type":"Range1d"},"x_scale":{"id":"1438","type":"LinearScale"},"y_range":{"id":"1428","type":"Range1d"},"y_scale":{"id":"1440","type":"LinearScale"}},"id":"1433","subtype":"Figure","type":"Plot"},{"attributes":{"align":null,"below":[{"id":"2505","type":"DatetimeAxis"}],"center":[{"id":"2509","type":"Grid"},{"id":"2514","type":"Grid"}],"left":[{"id":"2510","type":"LinearAxis"}],"margin":null,"min_border_bottom":10,"min_border_left":10,"min_border_right":10,"min_border_top":10,"plot_height":300,"plot_width":700,"renderers":[{"id":"2539","type":"GlyphRenderer"},{"id":"2547","type":"GlyphRenderer"},{"id":"2555","type":"GlyphRenderer"}],"sizing_mode":"fixed","title":{"id":"2497","type":"Title"},"toolbar":{"id":"2520","type":"Toolbar"},"toolbar_location":null,"x_range":{"id":"1427","type":"Range1d"},"x_scale":{"id":"2501","type":"LinearScale"},"y_range":{"id":"2492","type":"Range1d"},"y_scale":{"id":"2503","type":"LinearScale"}},"id":"2496","subtype":"Figure","type":"Plot"},{"attributes":{"active_drag":"auto","active_inspect":"auto","active_multi":null,"active_scroll":"auto","active_tap":"auto","tools":[{"id":"1429","type":"HoverTool"},{"id":"1430","type":"HoverTool"},{"id":"1431","type":"HoverTool"},{"id":"1432","type":"HoverTool"},{"id":"1452","type":"SaveTool"},{"id":"1453","type":"PanTool"},{"id":"1454","type":"WheelZoomTool"},{"id":"1455","type":"BoxZoomTool"},{"id":"1456","type":"ResetTool"}]},"id":"1457","type":"Toolbar"},{"attributes":{"line_alpha":0.2,"line_color":"black","line_width":2,"x":{"field":"index"},"y":{"field":"0-infection-day"}},"id":"2763","type":"Line"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AABQsYUHd0IAABAX2Ad3QgAA0HwqCHdCAACQ4nwId0IAAFBIzwh3QgAAEK4hCXdCAADQE3QJd0IAAJB5xgl3QgAAUN8YCndCAAAQRWsKd0IAANCqvQp3QgAAkBAQC3dCAABQdmILd0IAABDctAt3QgAA0EEHDHdCAACQp1kMd0IAAGieqAx3QgAAKAT7DHdCAADoaU0Nd0IAAKjPnw13QgAAaDXyDXdCAAAom0QOd0IAAOgAlw53QgAAqGbpDndCAABozDsPd0IAACgyjg93QgAA6JfgD3dCAACo/TIQd0IAAGhjhRB3QgAAKMnXEHdCAADoLioRd0IAAKiUfBF3QgAAaPrOEXdCAAAoYCESd0IAAOjFcxJ3QgAAqCvGEndCAAAANN4Sd0IAAMCZMBN3QgAAgP+CE3dCAABAZdUTd0IAAADLJxR3QgAAwDB6FHdCAACAlswUd0IAAED8HhV3QgAAAGJxFXdCAADAx8MVd0IAAIAtFhZ3QgAAQJNoFndCAAAA+boWd0IAAMBeDRd3QgAAgMRfF3dCAABAKrIXd0IAAACQBBh3QgAAwPVWGHdCAACAW6kYd0IAAEDB+xh3QgAAACdOGXdCAADAjKAZd0IAAIDy8hl3QgAAQFhFGndCAAAAvpcad0IAAMAj6hp3QgAAgIk8G3dCAABA744bd0IAAABV4Rt3QgAAwLozHHdCAACAIIYcd0IAAECG2Bx3QgAAAOwqHXdCAADAUX0dd0IAAIC3zx13QgAAQB0iHndCAAAAg3Qed0IAAMDoxh53QgAAgE4ZH3dCAABAtGsfd0IAAAAavh93QgAAwH8QIHdCAACA5WIgd0IAAEBLtSB3QgAAALEHIXdCAADAFlohd0IAAIB8rCF3QgAAQOL+IXdCAAAASFEid0IAAMCtoyJ3QgAAgBP2IndCAABAeUgjd0IAAADfmiN3Qg==","dtype":"float64","shape":[89]},"index_dt_strings":["2020-02-24 18:00:00","2020-02-25 18:00:00","2020-02-26 18:00:00","2020-02-27 18:00:00","2020-02-28 18:00:00","2020-02-29 18:00:00","2020-03-01 18:00:00","2020-03-02 18:00:00","2020-03-03 18:00:00","2020-03-04 18:00:00","2020-03-05 18:00:00","2020-03-06 18:00:00","2020-03-07 18:00:00","2020-03-08 18:00:00","2020-03-09 18:00:00","2020-03-10 18:00:00","2020-03-11 17:00:00","2020-03-12 17:00:00","2020-03-13 17:00:00","2020-03-14 17:00:00","2020-03-15 17:00:00","2020-03-16 17:00:00","2020-03-17 17:00:00","2020-03-18 17:00:00","2020-03-19 17:00:00","2020-03-20 17:00:00","2020-03-21 17:00:00","2020-03-22 17:00:00","2020-03-23 17:00:00","2020-03-24 17:00:00","2020-03-25 17:00:00","2020-03-26 17:00:00","2020-03-27 17:00:00","2020-03-28 17:00:00","2020-03-29 17:00:00","2020-03-30 17:00:00","2020-03-31 00:00:00","2020-04-01 00:00:00","2020-04-02 00:00:00","2020-04-03 00:00:00","2020-04-04 00:00:00","2020-04-05 00:00:00","2020-04-06 00:00:00","2020-04-07 00:00:00","2020-04-08 00:00:00","2020-04-09 00:00:00","2020-04-10 00:00:00","2020-04-11 00:00:00","2020-04-12 00:00:00","2020-04-13 00:00:00","2020-04-14 00:00:00","2020-04-15 00:00:00","2020-04-16 00:00:00","2020-04-17 00:00:00","2020-04-18 00:00:00","2020-04-19 00:00:00","2020-04-20 00:00:00","2020-04-21 00:00:00","2020-04-22 00:00:00","2020-04-23 00:00:00","2020-04-24 00:00:00","2020-04-25 00:00:00","2020-04-26 00:00:00","2020-04-27 00:00:00","2020-04-28 00:00:00","2020-04-29 00:00:00","2020-04-30 00:00:00","2020-05-01 00:00:00","2020-05-02 00:00:00","2020-05-03 00:00:00","2020-05-04 00:00:00","2020-05-05 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-08 00:00:00","2020-05-09 00:00:00","2020-05-10 00:00:00","2020-05-11 00:00:00","2020-05-12 00:00:00","2020-05-13 00:00:00","2020-05-14 00:00:00","2020-05-15 00:00:00","2020-05-16 00:00:00","2020-05-17 00:00:00","2020-05-18 00:00:00","2020-05-19 00:00:00","2020-05-20 00:00:00","2020-05-21 00:00:00","2020-05-22 00:00:00"],"predicted_daily":{"__ndarray__":"AAAAAAAAAADEmMK2we1gQGTgOC0QWWRALOAfGQNxaEBwkPyRzlVtQJyB8PZqlnFAXAdzHpEQdUBQh88m2jF5QDjES8jKFX5ASHzy+l/tgUA8tD/FuVCFQODpHtEHRolAsEpOy1PejUAMRm9IupSRQDiHlWc2mpRA4JD95p8DmEDQBk+THdGbQCDcy0Fn/Z9AZEo3nAw+okDc4pfGFJykQLBc/t9qCadAQED9FLpxqUAYcT+cS7yrQEjHgSZpza1AkAHbx5SIr0AwwKA9s2mwQJAuyCBTzLBASGq5V4jlsEBopVCVl7OwQGCbpWLrObBAUEn4Xy8Br0DQmLYwfiatQAAi9IIz/6pAIGhe6dWnqECAmXiWUjumQACyfJwJ0aNAAMynPbN7oUCAGoR6F5KeQEBdDkkthJpAgA8k0ILXlkBAGQXkZI+TQEAba907qpBAgAxRtB5GjEAAmfr3leWHQAAnL1x5IoRAABWfHqDrgEAAY+FqQWB8QACKI6vwv3dAAPjd09jYc0AA6BbbcpBwQADupOJ7nmtAAEp0wlQBZ0AA4kJa0iVjQAAMa5e02l9AAISZlJh7WkAA3FQ48AFWQAB0nRw0SFJAAEie5IZdTkAAEJuUEzZJQABwKSh87URAAMhVQnReQUAAUJIopNM8QAAwU1wp6zdAAHChgB7YM0AAUAl6aXYwQABgJyn+TytAAIDUQ8WnJkAAABqCncoiQACAyl0ELB9AAACRTY7aGUAAwNM9OnEVQABAh29/yBFAAAAEXBp/DUAAAEg5T3YIQACAL+1qSQRAAICyRe3SAEAAAK05c+f7PwAALmsBJPc/AAD2ebMw8z8AANr6CdTvPwAAErsAZeo/AAB2FG3j5T8AAAxVxybiPwAALInkGt4/AACsXBr32D8AAPS+8rPUPwAAlLEUK9E/AADovGV5zD8AAEBI25zHPw==","dtype":"float64","shape":[89]}},"selected":{"id":"1729","type":"Selection"},"selection_policy":{"id":"1765","type":"UnionRenderers"}},"id":"1728","type":"ColumnDataSource"},{"attributes":{"days":[1,15]},"id":"2257","type":"DaysTicker"},{"attributes":{"data_source":{"id":"1471","type":"ColumnDataSource"},"glyph":{"id":"1474","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1476","type":"Line"},"nonselection_glyph":{"id":"1475","type":"Line"},"selection_glyph":null,"view":{"id":"1478","type":"CDSView"}},"id":"1477","type":"GlyphRenderer"},{"attributes":{"line_alpha":0.1,"line_color":"black","line_width":2,"x":{"field":"index"},"y":{"field":"0-infection-day"}},"id":"2762","type":"Line"},{"attributes":{"data_source":{"id":"1487","type":"ColumnDataSource"},"glyph":{"id":"1490","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1492","type":"Line"},"nonselection_glyph":{"id":"1491","type":"Line"},"selection_glyph":null,"view":{"id":"1494","type":"CDSView"}},"id":"1493","type":"GlyphRenderer"},{"attributes":{"data_source":{"id":"2541","type":"ColumnDataSource"},"glyph":{"id":"2544","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"2546","type":"Line"},"nonselection_glyph":{"id":"2545","type":"Line"},"selection_glyph":null,"view":{"id":"2548","type":"CDSView"}},"id":"2547","type":"GlyphRenderer"},{"attributes":{"line_width":2,"x":{"field":"index"},"y":{"field":"0-infection-day"}},"id":"2761","type":"Line"},{"attributes":{"callback":null,"data":{"index":{"__ndarray__":"AABQsYUHd0IAABAX2Ad3QgAA0HwqCHdCAACQ4nwId0IAAFBIzwh3QgAAEK4hCXdCAADQE3QJd0IAAJB5xgl3QgAAUN8YCndCAAAQRWsKd0IAANCqvQp3QgAAkBAQC3dCAABQdmILd0IAABDctAt3QgAA0EEHDHdCAACQp1kMd0IAAGieqAx3QgAAKAT7DHdCAADoaU0Nd0IAAKjPnw13QgAAaDXyDXdCAAAom0QOd0IAAOgAlw53QgAAqGbpDndCAABozDsPd0IAACgyjg93QgAA6JfgD3dCAACo/TIQd0IAAGhjhRB3QgAAKMnXEHdCAADoLioRd0IAAKiUfBF3QgAAaPrOEXdCAAAoYCESd0IAAOjFcxJ3QgAAqCvGEndCAAAANN4Sd0IAAMCZMBN3QgAAgP+CE3dCAABAZdUTd0IAAADLJxR3QgAAwDB6FHdCAACAlswUd0IAAED8HhV3QgAAAGJxFXdCAADAx8MVd0IAAIAtFhZ3QgAAQJNoFndCAAAA+boWd0IAAMBeDRd3QgAAgMRfF3dCAABAKrIXd0IAAACQBBh3QgAAwPVWGHdCAACAW6kYd0IAAEDB+xh3QgAAACdOGXdCAADAjKAZd0IAAIDy8hl3QgAAQFhFGndCAAAAvpcad0IAAMAj6hp3QgAAgIk8G3dCAABA744bd0IAAABV4Rt3QgAAwLozHHdCAACAIIYcd0IAAECG2Bx3QgAAAOwqHXdCAADAUX0dd0IAAIC3zx13QgAAQB0iHndCAAAAg3Qed0IAAMDoxh53QgAAgE4ZH3dCAABAtGsfd0IAAAAavh93QgAAwH8QIHdCAACA5WIgd0IAAEBLtSB3QgAAALEHIXdCAADAFlohd0IAAIB8rCF3QgAAQOL+IXdCAAAASFEid0IAAMCtoyJ3QgAAgBP2IndCAABAeUgjd0IAAADfmiN3Qg==","dtype":"float64","shape":[89]},"index_dt_strings":["2020-02-24 18:00:00","2020-02-25 18:00:00","2020-02-26 18:00:00","2020-02-27 18:00:00","2020-02-28 18:00:00","2020-02-29 18:00:00","2020-03-01 18:00:00","2020-03-02 18:00:00","2020-03-03 18:00:00","2020-03-04 18:00:00","2020-03-05 18:00:00","2020-03-06 18:00:00","2020-03-07 18:00:00","2020-03-08 18:00:00","2020-03-09 18:00:00","2020-03-10 18:00:00","2020-03-11 17:00:00","2020-03-12 17:00:00","2020-03-13 17:00:00","2020-03-14 17:00:00","2020-03-15 17:00:00","2020-03-16 17:00:00","2020-03-17 17:00:00","2020-03-18 17:00:00","2020-03-19 17:00:00","2020-03-20 17:00:00","2020-03-21 17:00:00","2020-03-22 17:00:00","2020-03-23 17:00:00","2020-03-24 17:00:00","2020-03-25 17:00:00","2020-03-26 17:00:00","2020-03-27 17:00:00","2020-03-28 17:00:00","2020-03-29 17:00:00","2020-03-30 17:00:00","2020-03-31 00:00:00","2020-04-01 00:00:00","2020-04-02 00:00:00","2020-04-03 00:00:00","2020-04-04 00:00:00","2020-04-05 00:00:00","2020-04-06 00:00:00","2020-04-07 00:00:00","2020-04-08 00:00:00","2020-04-09 00:00:00","2020-04-10 00:00:00","2020-04-11 00:00:00","2020-04-12 00:00:00","2020-04-13 00:00:00","2020-04-14 00:00:00","2020-04-15 00:00:00","2020-04-16 00:00:00","2020-04-17 00:00:00","2020-04-18 00:00:00","2020-04-19 00:00:00","2020-04-20 00:00:00","2020-04-21 00:00:00","2020-04-22 00:00:00","2020-04-23 00:00:00","2020-04-24 00:00:00","2020-04-25 00:00:00","2020-04-26 00:00:00","2020-04-27 00:00:00","2020-04-28 00:00:00","2020-04-29 00:00:00","2020-04-30 00:00:00","2020-05-01 00:00:00","2020-05-02 00:00:00","2020-05-03 00:00:00","2020-05-04 00:00:00","2020-05-05 00:00:00","2020-05-06 00:00:00","2020-05-07 00:00:00","2020-05-08 00:00:00","2020-05-09 00:00:00","2020-05-10 00:00:00","2020-05-11 00:00:00","2020-05-12 00:00:00","2020-05-13 00:00:00","2020-05-14 00:00:00","2020-05-15 00:00:00","2020-05-16 00:00:00","2020-05-17 00:00:00","2020-05-18 00:00:00","2020-05-19 00:00:00","2020-05-20 00:00:00","2020-05-21 00:00:00","2020-05-22 00:00:00"],"predicted-error":{"__ndarray__":"z4K4++/GiEAEBJySWqiNQGRsVBNfvpFAoExjGgc5lUC4Rp5rMV+ZQM0XWGCXUJ5ARmjCXiIZokDOEEy2oJelQECCOlWbvKlAqsw294CkrkCj+0xuyDeyQP2pr034oLVAIPiz0cehuUAV8wdB4U++QI0MFRkf4cFA6eMV5kIIxUDH2b3xD6nIQKpBGv15zsxASpRnqvTA0EDA7KnUJGXTQP8j06h/VdZAThc5iGuR2UCWU8KUhRXdQLQRM2GfbeBAMO8/wFJs4kDswD2UOIDkQFgwslIzoeZATgYkvhPG6EBpLhisMuXqQNf8UMoo9exAUXB4NYPt7kDyW9HbqWPwQLA/ar3DPvFAv3hznX8G8kA48jLFOLryQNmC6a8TWvNAl3yaeNLm80CDsGdFp2H0QC75B08KzPRAQ+07upYn9UANXU1w73X1QH1HT7iruPVAEMZhg0rx9UAYu5INKyH2QC8d9XOJSfZAxri9EH5r9kBG72On/of2QDg9qqrgn/ZA5b/6F9yz9kCkxoaOjsT2QDQ3fWd+0vZAPPjYqR3e9kCz6SrGzOf2QNKBMw/d7/ZA4QeP7JL29kDa2S7JJ/z2QEGTB8HLAPdAU3PXE6cE90Cl5Mli2wf3QG7gLL+ECvdAGEiCkLoM90BDu9BWkA73QJ97jk4WEPdAwChS+lkR90Cd9+SWZhL3QO5L43tFE/dAHtnDbP4T90CgNtnclxT3QBBRuCcXFfdA1QlKwIAV90C8AiFY2BX3QCWePwAhFvdAEfYBRF0W90D+ZBdAjxb3QFmjK7W4FvdAotdoF9sW90BU6qib9xb3QKezDEIPF/dAw2483yIX90APL2gjMxf3QENhz6BAF/dAzhrD0EsX90Duds4XVRf3QBT5eclcF/dAfGTjKmMX90Aognl1aBf3QLLuuthsF/dAgW5LfHAX90DFdNCAcxf3QA==","dtype":"float64","shape":[89]},"predicted_hyphen_minus_error":{"__ndarray__":"z4K4++/GiEAEBJySWqiNQGRsVBNfvpFAoExjGgc5lUC4Rp5rMV+ZQM0XWGCXUJ5ARmjCXiIZokDOEEy2oJelQECCOlWbvKlAqsw294CkrkCj+0xuyDeyQP2pr034oLVAIPiz0cehuUAV8wdB4U++QI0MFRkf4cFA6eMV5kIIxUDH2b3xD6nIQKpBGv15zsxASpRnqvTA0EDA7KnUJGXTQP8j06h/VdZAThc5iGuR2UCWU8KUhRXdQLQRM2GfbeBAMO8/wFJs4kDswD2UOIDkQFgwslIzoeZATgYkvhPG6EBpLhisMuXqQNf8UMoo9exAUXB4NYPt7kDyW9HbqWPwQLA/ar3DPvFAv3hznX8G8kA48jLFOLryQNmC6a8TWvNAl3yaeNLm80CDsGdFp2H0QC75B08KzPRAQ+07upYn9UANXU1w73X1QH1HT7iruPVAEMZhg0rx9UAYu5INKyH2QC8d9XOJSfZAxri9EH5r9kBG72On/of2QDg9qqrgn/ZA5b/6F9yz9kCkxoaOjsT2QDQ3fWd+0vZAPPjYqR3e9kCz6SrGzOf2QNKBMw/d7/ZA4QeP7JL29kDa2S7JJ/z2QEGTB8HLAPdAU3PXE6cE90Cl5Mli2wf3QG7gLL+ECvdAGEiCkLoM90BDu9BWkA73QJ97jk4WEPdAwChS+lkR90Cd9+SWZhL3QO5L43tFE/dAHtnDbP4T90CgNtnclxT3QBBRuCcXFfdA1QlKwIAV90C8AiFY2BX3QCWePwAhFvdAEfYBRF0W90D+ZBdAjxb3QFmjK7W4FvdAotdoF9sW90BU6qib9xb3QKezDEIPF/dAw2483yIX90APL2gjMxf3QENhz6BAF/dAzhrD0EsX90Duds4XVRf3QBT5eclcF/dAfGTjKmMX90Aognl1aBf3QLLuuthsF/dAgW5LfHAX90DFdNCAcxf3QA==","dtype":"float64","shape":[89]}},"selected":{"id":"1488","type":"Selection"},"selection_policy":{"id":"1512","type":"UnionRenderers"}},"id":"1487","type":"ColumnDataSource"},{"attributes":{},"id":"2542","type":"Selection"},{"attributes":{"line_alpha":0.2,"line_color":"green","line_width":4,"x":{"field":"index"},"y":{"field":"total-infected"}},"id":"2538","type":"Line"},{"attributes":{"days":[1,8,15,22]},"id":"2256","type":"DaysTicker"},{"attributes":{},"id":"1480","type":"Selection"},{"attributes":{},"id":"1753","type":"Selection"},{"attributes":{"data_source":{"id":"2758","type":"ColumnDataSource"},"glyph":{"id":"2761","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"2763","type":"Line"},"nonselection_glyph":{"id":"2762","type":"Line"},"selection_glyph":null,"view":{"id":"2765","type":"CDSView"}},"id":"2764","type":"GlyphRenderer"},{"attributes":{"line_alpha":0.2,"line_color":"green","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"total-infected-error"}},"id":"2546","type":"Line"},{"attributes":{"line_color":"red","line_width":4,"x":{"field":"index"},"y":{"field":"daily"}},"id":"1755","type":"Line"},{"attributes":{"base":60,"mantissas":[1,2,5,10,15,20,30],"max_interval":1800000.0,"min_interval":1000.0,"num_minor_ticks":0},"id":"2252","type":"AdaptiveTicker"},{"attributes":{"days":[1,4,7,10,13,16,19,22,25,28]},"id":"2255","type":"DaysTicker"},{"attributes":{"source":{"id":"2533","type":"ColumnDataSource"}},"id":"2540","type":"CDSView"},{"attributes":{"data_source":{"id":"2533","type":"ColumnDataSource"},"glyph":{"id":"2536","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"2538","type":"Line"},"nonselection_glyph":{"id":"2537","type":"Line"},"selection_glyph":null,"view":{"id":"2540","type":"CDSView"}},"id":"2539","type":"GlyphRenderer"},{"attributes":{"source":{"id":"1744","type":"ColumnDataSource"}},"id":"1751","type":"CDSView"},{"attributes":{},"id":"1765","type":"UnionRenderers"},{"attributes":{"days":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]},"id":"2254","type":"DaysTicker"},{"attributes":{"callback":null,"end":4821.0,"reset_end":4821.0,"reset_start":0.0,"tags":[[["predicted_daily","predicted_daily",null]]]},"id":"1685","type":"Range1d"},{"attributes":{"line_alpha":0.1,"line_color":"green","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"total-infected-error"}},"id":"2545","type":"Line"},{"attributes":{"active_drag":"auto","active_inspect":"auto","active_multi":null,"active_scroll":"auto","active_tap":"auto","tools":[{"id":"2726","type":"HoverTool"},{"id":"2746","type":"SaveTool"},{"id":"2747","type":"PanTool"},{"id":"2748","type":"WheelZoomTool"},{"id":"2749","type":"BoxZoomTool"},{"id":"2750","type":"ResetTool"}]},"id":"2751","type":"Toolbar"},{"attributes":{"mantissas":[1,2,5],"max_interval":500.0,"num_minor_ticks":0},"id":"1773","type":"AdaptiveTicker"},{"attributes":{"base":24,"mantissas":[1,2,4,6,8,12],"max_interval":43200000.0,"min_interval":3600000.0,"num_minor_ticks":0},"id":"2253","type":"AdaptiveTicker"},{"attributes":{"data_source":{"id":"1752","type":"ColumnDataSource"},"glyph":{"id":"1755","type":"Line"},"hover_glyph":null,"muted_glyph":{"id":"1757","type":"Line"},"nonselection_glyph":{"id":"1756","type":"Line"},"selection_glyph":null,"view":{"id":"1759","type":"CDSView"}},"id":"1758","type":"GlyphRenderer"},{"attributes":{"line_alpha":0.2,"line_color":"red","line_width":4,"x":{"field":"index"},"y":{"field":"daily"}},"id":"1757","type":"Line"},{"attributes":{},"id":"1470","type":"BasicTickFormatter"},{"attributes":{},"id":"2550","type":"Selection"},{"attributes":{"line_color":"green","line_dash":[6],"line_width":2,"x":{"field":"index"},"y":{"field":"total-infected-error"}},"id":"2544","type":"Line"},{"attributes":{"source":{"id":"1752","type":"ColumnDataSource"}},"id":"1759","type":"CDSView"},{"attributes":{"source":{"id":"2541","type":"ColumnDataSource"}},"id":"2548","type":"CDSView"},{"attributes":{"line_alpha":0.1,"line_color":"red","line_width":4,"x":{"field":"index"},"y":{"field":"daily"}},"id":"1756","type":"Line"},{"attributes":{},"id":"1767","type":"UnionRenderers"},{"attributes":{"align":null,"below":[{"id":"2736","type":"DatetimeAxis"}],"center":[{"id":"2740","type":"Grid"},{"id":"2745","type":"Grid"}],"left":[{"id":"2741","type":"DatetimeAxis"}],"margin":null,"min_border_bottom":10,"min_border_left":10,"min_border_right":10,"min_border_top":10,"plot_height":300,"plot_width":700,"renderers":[{"id":"2764","type":"GlyphRenderer"}],"sizing_mode":"fixed","title":{"id":"2728","type":"Title"},"toolbar":{"id":"2751","type":"Toolbar"},"toolbar_location":null,"x_range":{"id":"1427","type":"Range1d"},"x_scale":{"id":"2732","type":"LinearScale"},"y_range":{"id":"2725","type":"Range1d"},"y_scale":{"id":"2734","type":"LinearScale"}},"id":"2727","subtype":"Figure","type":"Plot"}],"root_ids":["2947"]},"title":"Bokeh Application","version":"1.4.0"}};
+  var render_items = [{"docid":"05c37644-72b6-49fe-9398-9870c4c85ab1","roots":{"2947":"a4809cd3-4197-4e97-9717-fd2e6f679e9c"}}];
+  root.Bokeh.embed.embed_items_notebook(docs_json, render_items);
+
+  }
+  if (root.Bokeh !== undefined) {
+    embed_document(root);
+  } else {
+    var attempts = 0;
+    var timer = setInterval(function(root) {
+      if (root.Bokeh !== undefined) {
+        clearInterval(timer);
+        embed_document(root);
+      } else {
+        attempts++;
+        if (attempts > 100) {
+          clearInterval(timer);
+          console.log("Bokeh: ERROR: Unable to run BokehJS code because BokehJS library is missing");
+        }
+      }
+    }, 10, root)
+  }
+})(window);
+</script>
+</div>
