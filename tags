@@ -5,4 +5,10 @@
 !_TAG_PROGRAM_URL	https://ctags.io/	/official site/
 !_TAG_PROGRAM_VERSION	0.0.0	/f07b0a9/
 !_TAG_OUTPUT_MODE	u-ctags	/u-ctags or e-ctags/
+links	docs/index.html	/^<h2 id="links">Links<\/h2>$/;"	I
+Links	docs/index.html	/^<h2 id="links">Links<\/h2>$/;"	i
+the-logistic-model	docs/index.html	/^<h2 id="the-logistic-model">The logistic model<\/h2>$/;"	I
+The logistic model	docs/index.html	/^<h2 id="the-logistic-model">The logistic model<\/h2>$/;"	i
+python-requirements-to-run-the-notbooks	docs/index.html	/^<h2 id="python-requirements-to-run-the-notbooks">python requirements to run the notbooks<\/h2>$/;"	I
+python requirements to run the notbooks	docs/index.html	/^<h2 id="python-requirements-to-run-the-notbooks">python requirements to run the notbooks<\/h2>$/;"	i
 a4809cd3-4197-4e97-9717-fd2e6f679e9c	docs/italy_covid19_logistic.html	/^  <div class="bk-root" id="a4809cd3-4197-4e97-9717-fd2e6f679e9c" data-root-id="2947"><\/div>$/;"	I
