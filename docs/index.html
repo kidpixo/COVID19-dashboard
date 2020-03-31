@@ -15,26 +15,17 @@
 
 <h1>Simple covid19 logistic regression model</h2>
 
-<p>Dashboards homepage : <a href="https://kidpixo.github.io/COVID19-dashboard/">Simple covid19 logistic regression model</a></p>
-<p>Still under construction! </p>
-<p>For <strong>errors or anything else</strong> open an issue in the github repository <a href="https://github.com/kidpixo/COVID19-dashboard/issues/new">kidpixo/COVID19-dashboard</a></p>
-<h2>General description</h2>
-<p>I read the nice post <a href="https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d">Covid-19 infection in Italy. Mathematical models and predictions</a>.</p>
-<p>I want to do something useful and learn something, so I start reproducing the post.</p>
-<p>The original post uses data from the <a href="http://www.protezionecivile.gov.it/">Italian Civil Protection Department</a>, that collects and pushes new data every day in their github repository <a href="https://github.com/CSSEGISandData/COVID-19">CSSEGISandData/COVID-19</a>.</p>
-<p>I also start to use the global data from <a href="https://github.com/CSSEGISandData/COVID-19">CSSEGISandData/COVID-19: Novel Coronavirus (COVID-19) Cases, provided by JHU CSSE</a>, but this is not fully functional.</p>
-<p>The main important point in the notebook are:</p>
-<ol>
-<li>get the data</li>
-<li>clean days with 'warnings' (missing data etc etc) : I delete the datapoint and interpolate, trusting the nearest points are good. </li>
-<li>define the logistic model (see <a href="#the-logistic-model">below</a>)</li>
-<li>start fitting the function on the latest 14 days, to take care of the evolving situation in each state.</li>
-<li>move the window from the beginning of the data to the end, producing a time series of the model paramter with error.</li>
-<li>generate new date to the point when there will be 0 daily infection, following the model.</li>
-<li>calculate predicted infection for each day in the future.</li>
-<li>Propagate uncertainties.</li>
-</ol>
+<h2>Content</h2>
+<ul>
+<li><a href="#italy-covid19-logistic-regression-model">Italy covid19 logistic regression model</a></li>
+<li><a href="#plots-description">Plots description</a></li>
+<li><a href="#general-description">General description</a></li>
+<li><a href="#the-logistic-model">The logistic model</a></li>
+</ul>
+<p><strong>Still under construction!</strong></p>
+<p>For <strong>errors or criticism</strong> open an issue in the github repository <a href="https://github.com/kidpixo/COVID19-dashboard/issues/new">kidpixo/COVID19-dashboard</a></p>
 <h2>Italy covid19 logistic regression model</h2>
+<p><a name="italy-covid19-logistic-regression-model"></a></p>
 <ul>
 <li><a href="italy_covid19_logistic.html">Dashboard</a></li>
 <li><a href="https://github.com/kidpixo/COVID19-dashboard/blob/master/Logistic%20regression%20COVID-19%20-%20Italy%20dataset.ipynb">Notebook</a></li>
@@ -48,7 +39,35 @@
 </ul>
 <p>Based on <a href="https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d">Covid-19 infection in Italy. Mathematical models and predictions</a></p>
 <p>Data from <a href="https://github.com/CSSEGISandData/COVID-19">CSSEGISandData/COVID-19</a> / Dashboard <a href="https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html?fbclid=IwAR3prf7gRuznOnGiv_wZpjhVQ-YZAtQcVJYorx1Yfu3Tutt4nn2dUQaGbyo#/bda7594740fd40299423467b48e9ecf6">Coronavirus COVID-19 (2019-nCoV)</a></p>
+<h2>Plots description</h2>
+<p><a name="plots-description"></a></p>
+<ul>
+<li><strong>infection cumulative</strong> : cumulative number of infection.</li>
+<li><strong>infection daily</strong> : daily number of infection.</li>
+<li><strong>infection speed</strong>: the number of new infection cause by each person (paramter a in the model).</li>
+<li><strong>max day</strong> :  the day with the maximum infections occurred, this is the maximum of the daily curve (paramter b in the model).</li>
+<li><strong>total infected</strong> : the total number of recorded infected people at the infection’s end (paramter c in the model).</li>
+<li><strong>day of 0 infection</strong> : the day when the modeled daily infection drops to 0.</li>
+</ul>
+<h2>General description</h2>
+<p><a name="general-description"></a></p>
+<p>I read the nice post <a href="https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d">Covid-19 infection in Italy. Mathematical models and predictions</a>.</p>
+<p>I want to do something useful and learn something, so I start reproducing the post.</p>
+<p>The original post uses data from the <a href="http://www.protezionecivile.gov.it/">Italian Civil Protection Department</a>, that collects and pushes new data every day in their github repository <a href="https://github.com/CSSEGISandData/COVID-19">CSSEGISandData/COVID-19</a>.</p>
+<p>I also start to use the global data from <a href="https://github.com/CSSEGISandData/COVID-19">CSSEGISandData/COVID-19: Novel Coronavirus (COVID-19) Cases, provided by JHU CSSE</a>, but this is not fully functional.</p>
+<p>The main important point in the notebook are:</p>
+<ol>
+<li>Get the data</li>
+<li>Clean days with 'warnings' (missing data etc etc) : I delete the datapoint and interpolate, trusting the nearest points are good. </li>
+<li>Define the logistic model (see <a href="#the-logistic-model">below</a>)</li>
+<li>Start fitting the function on the latest 14 days, to take care of the evolving situation in each state.</li>
+<li>Move the window from the beginning of the data to the end, producing a time series of the model paramter with error.</li>
+<li>Generate new date to the point when there will be 0 daily infection, following the model.</li>
+<li>Calculate predicted infection for each day in the future.</li>
+<li>Propagate uncertainties.</li>
+</ol>
 <h2>The logistic model</h2>
+<p><a name="the-logistic-model"></a></p>
 <p>(Text from <a href="https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d">Covid-19 infection in Italy. Mathematical models and predictions</a>)</p>
 <p>The logistic model has been widely used to describe the growth of a population. An infection can be described as the growth of the population of a pathogen agent, so a logistic model seems reasonable.</p>
 <p>This formula is very known among data scientists because it’s used in the logistic regression classifier and as an activation function of neural networks.</p>
@@ -62,15 +81,6 @@
 </ul>
 <p>At high time values, the number of infected people gets closer and closer to c and that’s the point at which we can say that the infection has ended.</p>
 <p>This function has also an inflection point at b, that is the point at which the first derivative starts to decrease (i.e. the peak after which the infection starts to become less aggressive and decreases).</p>
-<h2>python requirements to run the notbooks</h2>
-<pre><code>numpy
-pandas
-sklearn
-scipy
-markdown
-hvplot
-holoviews
-</code></pre>
 
 </body>
 </html>

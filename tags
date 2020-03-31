@@ -303,8 +303,8 @@ a.pagination-item:hover	docs/css/poole.css	/^a.pagination-item:hover {$/;"	c
 .css .o	docs/css/syntax.css	/^.css .o,$/;"	c
 .css .o + .nt	docs/css/syntax.css	/^.css .o + .nt,$/;"	c
 .css .nt + .nt	docs/css/syntax.css	/^.css .nt + .nt { color: #999; }$/;"	c
+General description	docs/index.html	/^<h2>General description<\/h2>$/;"	i
 Italy covid19 logistic regression model	docs/index.html	/^<h2>Italy covid19 logistic regression model<\/h2>$/;"	i
-Latest Model Results 30/03/2020	docs/index.html	/^<h3>Latest Model Results 30\/03\/2020<\/h3>$/;"	j
 The logistic model	docs/index.html	/^<h2>The logistic model<\/h2>$/;"	i
 python requirements to run the notbooks	docs/index.html	/^<h2>python requirements to run the notbooks<\/h2>$/;"	i
-56c8c27e-283d-4e63-8c1f-83549f2ed26a	docs/italy_covid19_logistic.html	/^  <div class="bk-root" id="56c8c27e-283d-4e63-8c1f-83549f2ed26a" data-root-id="27193"><\/div>$/;"	I
+319ea3a7-ef01-46c0-a747-bec8d5b73f42	docs/italy_covid19_logistic.html	/^  <div class="bk-root" id="319ea3a7-ef01-46c0-a747-bec8d5b73f42" data-root-id="2947"><\/div>$/;"	I
