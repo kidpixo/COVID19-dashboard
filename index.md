@@ -3,16 +3,35 @@ Dashboards homepage : [Simple covid19 logistic regression model](https://kidpixo
 
 Still under construction! 
 
-For errors or anything else open an issue in the github repository [kidpixo/COVID19-dashboard](https://github.com/kidpixo/COVID19-dashboard/issues/new)
+For **errors or anything else** open an issue in the github repository [kidpixo/COVID19-dashboard](https://github.com/kidpixo/COVID19-dashboard/issues/new)
 
+## General description
+
+I read the nice post [Covid-19 infection in Italy. Mathematical models and predictions](https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d).
+
+I want to do something useful and learn something, so I start reproducing the post.
+
+The original post uses data from the [Italian Civil Protection Department](http://www.protezionecivile.gov.it/), that collects and pushes new data every day in their github repository [CSSEGISandData/COVID-19](https://github.com/CSSEGISandData/COVID-19).
+
+I also start to use the global data from [CSSEGISandData/COVID-19: Novel Coronavirus (COVID-19) Cases, provided by JHU CSSE](https://github.com/CSSEGISandData/COVID-19), but this is not fully functional.
+
+The main important point in the notebook are:
+
+1. get the data
+2. clean days with 'warnings' (missing data etc etc) : I delete the datapoint and interpolate, trusting the nearest points are good. 
+3. define the logistic model (see [below](#the-logistic-model))
+4. start fitting the function on the latest 14 days, to take care of the evolving situation in each state.
+5. move the window from the beginning of the data to the end, producing a time series of the model paramter with error.
+6. generate new date to the point when there will be 0 daily infection, following the model.
+7. calculate predicted infection for each day in the future.
+8. Propagate uncertainties.
 
 ## Italy covid19 logistic regression model
 
 - [Dashboard](italy_covid19_logistic.html)
 - [Notebook](https://github.com/kidpixo/COVID19-dashboard/blob/master/Logistic%20regression%20COVID-19%20-%20Italy%20dataset.ipynb)
 
-
-### Latest Model Results {last_date}
+#### Latest Model Results {last_date}
 
 {latest_model_results}
 
