@@ -4,7 +4,7 @@
         <meta charset="utf-8" />
         <meta name="generator" content="pandoc" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-        <title>index</title>
+        <title>Simple covid19 logistic regression model</title>
   <link rel="stylesheet" href="css/poole.css">
   <link rel="stylesheet" href="css/syntax.css">
   <link rel="stylesheet" href="css/lanyon.css">
@@ -13,67 +13,43 @@
 <body>
 
 
-<h2>ToC</h2>
-<nav id="TOC" role="doc-toc">
+<h1>Simple covid19 logistic regression model</h2>
 
+<h2>Links</h2>
+<h3>Italy covid19 logistic regression model</h3>
+<p><a href="italy_covid19_logistic.html">Italy covid19 logistic regression model</a></p>
+<h3>Latest Model Results 30/03/2020</h3>
 <ul>
-<li><a href="#links">Links</a>
-<ul>
-<li><a href="#italy-covid19-logistic-regression-model">Italy covid19 logistic regression model</a></li>
-<li><a href="#latest-model-results-last_date">Latest Model Results {last_date}</a></li>
-</ul></li>
-<li><a href="#the-logistic-model">The logistic model</a></li>
-<li><a href="#python-requirements-to-run-the-notbooks">python requirements to run the notbooks</a></li>
+<li>a:     5.34±    0.20 : infection speed </li>
+<li>b:    81.33±    0.27 : the day with the maximum infections occurred 21/03/2020</li>
+<li>c: 92506.86± 2077.27 : the total number of recorded infected people at the infection’s end </li>
+<li>Day of 0 new infections 22/05/2020</li>
 </ul>
-</nav>
-
-
-<h2 id="links">Links</h2>
-
-
-
-<h3 id="italy-covid19-logistic-regression-model">Italy covid19 logistic regression model</h3>
-    <p><a href="italy_covid19_logistic.html">Italy covid19 logistic regression model</a></p>
-
-
-
-<h3 id="latest-model-results-last_date">Latest Model Results {last_date}</h3>
-    <p>{latest_model_results}</p>
-    <p>Based on <a href="https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d">Covid-19 infection in Italy. Mathematical models and predictions</a></p>
-    <p>Data from <a href="https://github.com/CSSEGISandData/COVID-19">CSSEGISandData/COVID-19</a> / Dashboard <a href="https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html?fbclid=IwAR3prf7gRuznOnGiv_wZpjhVQ-YZAtQcVJYorx1Yfu3Tutt4nn2dUQaGbyo#/bda7594740fd40299423467b48e9ecf6">Coronavirus COVID-19 (2019-nCoV)</a></p>
-
-
-
-<h2 id="the-logistic-model">The logistic model</h2>
-    <p>(Text from <a href="https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d">Covid-19 infection in Italy. Mathematical models and predictions</a>)</p>
-    <p>The logistic model has been widely used to describe the growth of a population. An infection can be described as the growth of the population of a pathogen agent, so a logistic model seems reasonable.</p>
-    <p>i This formula is very known among data scientists because it’s used in the logistic regression classifier and as an activation function of neural networks.</p>
-    <p>The most generic expression of a logistic function is:</p>
-    <figure>
-        <img src="https://miro.medium.com/max/546/1*bnVnrdWrWxvZfqJ_1bgrUQ.png" alt="" /><figcaption>logistic formula</figcaption>
-    </figure>
-    <p>In this formula, we have the variable x that is the time and three parameters: a,b,c.</p>
-    <ul>
-    <li>a refers to the infection speed</li>
-    <li>b is the day with the maximum infections occurred</li>
-    <li>c is the total number of recorded infected people at the infection’s end</li>
-    </ul>
-    <p>At high time values, the number of infected people gets closer and closer to c and that’s the point at which we can say that the infection has ended.</p>
-    <p>This function has also an inflection point at b, that is the point at which the first derivative starts to decrease (i.e. the peak after which the infection starts to become less aggressive and decreases).</p>
-
-
-
-<h2 id="python-requirements-to-run-the-notbooks">python requirements to run the notbooks</h2>
+<p>Based on <a href="https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d">Covid-19 infection in Italy. Mathematical models and predictions</a></p>
+<p>Data from <a href="https://github.com/CSSEGISandData/COVID-19">CSSEGISandData/COVID-19</a> / Dashboard <a href="https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html?fbclid=IwAR3prf7gRuznOnGiv_wZpjhVQ-YZAtQcVJYorx1Yfu3Tutt4nn2dUQaGbyo#/bda7594740fd40299423467b48e9ecf6">Coronavirus COVID-19 (2019-nCoV)</a></p>
+<h2>The logistic model</h2>
+<p>(Text from <a href="https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d">Covid-19 infection in Italy. Mathematical models and predictions</a>)</p>
+<p>The logistic model has been widely used to describe the growth of a population. An infection can be described as the growth of the population of a pathogen agent, so a logistic model seems reasonable.</p>
+<p>i
+This formula is very known among data scientists because it’s used in the logistic regression classifier and as an activation function of neural networks.</p>
+<p>The most generic expression of a logistic function is:</p>
+<p><img alt="logistic formula" src="https://miro.medium.com/max/546/1*bnVnrdWrWxvZfqJ_1bgrUQ.png" /></p>
+<p>In this formula, we have the variable x that is the time and three parameters: a,b,c.</p>
+<ul>
+<li>a refers to the infection speed</li>
+<li>b is the day with the maximum infections occurred</li>
+<li>c is the total number of recorded infected people at the infection’s end</li>
+</ul>
+<p>At high time values, the number of infected people gets closer and closer to c and that’s the point at which we can say that the infection has ended.</p>
+<p>This function has also an inflection point at b, that is the point at which the first derivative starts to decrease (i.e. the peak after which the infection starts to become less aggressive and decreases).</p>
+<h2>python requirements to run the notbooks</h2>
 <pre><code>numpy
 pandas
 sklearn
 scipy
-markdown
 hvplot
-holoviews</code></pre>
-
-
-
+holoviews
+</code></pre>
 
 </body>
 </html>
