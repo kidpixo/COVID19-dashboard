@@ -1,8 +1,15 @@
-## Links
 
-### Italy covid19 logistic regression model
+Dashboards homepage : [Simple covid19 logistic regression model](https://kidpixo.github.io/COVID19-dashboard/)
 
-[Italy covid19 logistic regression model](italy_covid19_logistic.html)
+Still under construction! 
+
+For errors or anything else open an issue in the github repository [kidpixo/COVID19-dashboard](https://github.com/kidpixo/COVID19-dashboard/issues/new)
+
+
+## Italy covid19 logistic regression model
+
+- [Dashboard](italy_covid19_logistic.html)
+- [Notebook](https://github.com/kidpixo/COVID19-dashboard/blob/master/Logistic%20regression%20COVID-19%20-%20Italy%20dataset.ipynb)
 
 
 ### Latest Model Results {last_date}
@@ -19,9 +26,7 @@ Data from [CSSEGISandData/COVID-19](https://github.com/CSSEGISandData/COVID-19) 
 
 The logistic model has been widely used to describe the growth of a population. An infection can be described as the growth of the population of a pathogen agent, so a logistic model seems reasonable.
 
-i
 This formula is very known among data scientists because it’s used in the logistic regression classifier and as an activation function of neural networks.
-
 
 The most generic expression of a logistic function is:
 

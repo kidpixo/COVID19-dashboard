@@ -303,14 +303,9 @@ a.pagination-item:hover	docs/css/poole.css	/^a.pagination-item:hover {$/;"	c
 .css .o	docs/css/syntax.css	/^.css .o,$/;"	c
 .css .o + .nt	docs/css/syntax.css	/^.css .o + .nt,$/;"	c
 .css .nt + .nt	docs/css/syntax.css	/^.css .nt + .nt { color: #999; }$/;"	c
-links	docs/index.html	/^<h2 id="links">Links<\/h2>$/;"	I
-Links	docs/index.html	/^<h2 id="links">Links<\/h2>$/;"	i
-italy-covid19-logistic-regression-model	docs/index.html	/^<h3 id="italy-covid19-logistic-regression-model">Italy covid19 logistic regression model<\/h3>$/;"	I
-Italy covid19 logistic regression model	docs/index.html	/^<h3 id="italy-covid19-logistic-regression-model">Italy covid19 logistic regression model<\/h3>$/;"	j
-Links	docs/index.html	/^<h2>Links<\/h2>$/;"	i
-Italy covid19 logistic regression model	docs/index.html	/^<h3>Italy covid19 logistic regression model<\/h3>$/;"	j
+Italy covid19 logistic regression model	docs/index.html	/^<h2>Italy covid19 logistic regression model<\/h2>$/;"	i
 Latest Model Results 30/03/2020	docs/index.html	/^<h3>Latest Model Results 30\/03\/2020<\/h3>$/;"	j
 The logistic model	docs/index.html	/^<h2>The logistic model<\/h2>$/;"	i
 python requirements to run the notbooks	docs/index.html	/^<h2>python requirements to run the notbooks<\/h2>$/;"	i
 a4809cd3-4197-4e97-9717-fd2e6f679e9c	docs/italy_covid19_logistic.html	/^  <div class="bk-root" id="a4809cd3-4197-4e97-9717-fd2e6f679e9c" data-root-id="2947"><\/div>$/;"	I
-b364c6aa-c464-4514-9f39-dba601d46b6c	italy_covid19_logistic.html	/^  <div class="bk-root" id="b364c6aa-c464-4514-9f39-dba601d46b6c" data-root-id="2947"><\/div>$/;"	I
+94a7b1e9-c05a-423c-bca0-674ae8d5cf1b	italy_covid19_logistic.html	/^  <div class="bk-root" id="94a7b1e9-c05a-423c-bca0-674ae8d5cf1b" data-root-id="2947"><\/div>$/;"	I
