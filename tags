@@ -303,8 +303,13 @@ a.pagination-item:hover	docs/css/poole.css	/^a.pagination-item:hover {$/;"	c
 .css .o	docs/css/syntax.css	/^.css .o,$/;"	c
 .css .o + .nt	docs/css/syntax.css	/^.css .o + .nt,$/;"	c
 .css .nt + .nt	docs/css/syntax.css	/^.css .nt + .nt { color: #999; }$/;"	c
-General description	docs/index.html	/^<h2>General description<\/h2>$/;"	i
+Content	docs/index.html	/^<h2>Content<\/h2>$/;"	i
 Italy covid19 logistic regression model	docs/index.html	/^<h2>Italy covid19 logistic regression model<\/h2>$/;"	i
+italy-covid19-logistic-regression-model	docs/index.html	/^<p><a name="italy-covid19-logistic-regression-model"><\/a><\/p>$/;"	a
+Plots description	docs/index.html	/^<h2>Plots description<\/h2>$/;"	i
+plots-description	docs/index.html	/^<p><a name="plots-description"><\/a><\/p>$/;"	a
+General description	docs/index.html	/^<h2>General description<\/h2>$/;"	i
+general-description	docs/index.html	/^<p><a name="general-description"><\/a><\/p>$/;"	a
 The logistic model	docs/index.html	/^<h2>The logistic model<\/h2>$/;"	i
-python requirements to run the notbooks	docs/index.html	/^<h2>python requirements to run the notbooks<\/h2>$/;"	i
-319ea3a7-ef01-46c0-a747-bec8d5b73f42	docs/italy_covid19_logistic.html	/^  <div class="bk-root" id="319ea3a7-ef01-46c0-a747-bec8d5b73f42" data-root-id="2947"><\/div>$/;"	I
+the-logistic-model	docs/index.html	/^<p><a name="the-logistic-model"><\/a><\/p>$/;"	a
+2b87ae71-a0e8-4ec0-85e1-999490f69103	docs/italy_covid19_logistic.html	/^  <div class="bk-root" id="2b87ae71-a0e8-4ec0-85e1-999490f69103" data-root-id="2947"><\/div>$/;"	I
