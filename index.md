@@ -4,6 +4,11 @@
 
 [Italy covid19 logistic regression model](italy_covid19_logistic.html)
 
+
+### Latest Model Results {last_date}
+
+{latest_model_results}
+
 Based on [Covid-19 infection in Italy. Mathematical models and predictions](https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d)
 
 Data from [CSSEGISandData/COVID-19](https://github.com/CSSEGISandData/COVID-19) / Dashboard [Coronavirus COVID-19 (2019-nCoV)](https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html?fbclid=IwAR3prf7gRuznOnGiv_wZpjhVQ-YZAtQcVJYorx1Yfu3Tutt4nn2dUQaGbyo#/bda7594740fd40299423467b48e9ecf6)
@@ -38,5 +43,6 @@ This function has also an inflection point at b, that is the point at which the 
     pandas
     sklearn
     scipy
+    markdown
     hvplot
     holoviews
