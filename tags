@@ -312,4 +312,4 @@ General description	docs/index.html	/^<h2>General description<\/h2>$/;"	i
 general-description	docs/index.html	/^<p><a name="general-description"><\/a><\/p>$/;"	a
 The logistic model	docs/index.html	/^<h2>The logistic model<\/h2>$/;"	i
 the-logistic-model	docs/index.html	/^<p><a name="the-logistic-model"><\/a><\/p>$/;"	a
-2b87ae71-a0e8-4ec0-85e1-999490f69103	docs/italy_covid19_logistic.html	/^  <div class="bk-root" id="2b87ae71-a0e8-4ec0-85e1-999490f69103" data-root-id="2947"><\/div>$/;"	I
+c5dec9c8-1307-43be-9c74-76ad7974bc12	docs/italy_covid19_logistic.html	/^  <div class="bk-root" id="c5dec9c8-1307-43be-9c74-76ad7974bc12" data-root-id="2947"><\/div>$/;"	I
