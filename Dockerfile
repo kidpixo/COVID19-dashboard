@@ -4,5 +4,4 @@
 
 FROM jupyter/scipy-notebook
 # FROM python:3.8-slim-buster
-RUN python -m pip install markdown uncertainties "bokeh>=2.0.0"
-#  "holoviews[extras]" hvplot 
+RUN python -m pip install markdown uncertainties "bokeh>=2.0.0" holoviews hvplot 

@@ -17,6 +17,8 @@ For **errors or criticism** open an issue in the github repository [kidpixo/COVI
 
 #### Latest Model Results {last_date}
 
+**NEW on 10 Apr** I modified the model days window from 14 to 21 to have more stability in the model.
+
 {latest_model_results}
 
 Based on [Covid-19 infection in Italy. Mathematical models and predictions](https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d)
