@@ -11,7 +11,7 @@ echo "DIR : $DIR"
 echo "CODE : $CODE"
 # run container 
 docker run  --rm -it -v $DIR:/code covid19-dashboard:latest jupyter nbconvert --to notebook --inplace --execute $CODE/Logistic\ regression\ COVID-19\ -\ Italy\ dataset.ipynb
-echo "executed $(date +%F)" >> $DIR/execution.log
+echo "executed $(date)" >> $DIR/execution.log
 
 # pushing upstream
 git -C $DIR add --all
