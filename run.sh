@@ -1,16 +1,14 @@
-# run container 
-# mount code and ssh keys
-docker run  --rm -it -v $PWD:/code -v ~/.ssh:/home/jovyan/.ssh:ro covid19-dashboard:alpha /run.sh
-
+## local dir
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 ## this runs inside container
 CODE=/code
 
-cd $CODE
-# execute this
-jupyter nbconvert --to notebook --inplace --execute $CODE/Logistic\ regression\ COVID-19\ -\ Italy\ dataset.ipynb
+echo "DIR : $DIR"
+echo "CODE : $CODE"
+# run container 
+docker run  --rm -it -v $DIR:/code covid19-dashboard:alpha jupyter nbconvert --to notebook --inplace --execute $CODE/Logistic\ regression\ COVID-19\ -\ Italy\ dataset.ipynb
 
-
-git add --all
-git commit --verbose -a -m "update $(date +%F)"
-git push
+git -C $DIR add --all
+git -C $DIR commit --verbose -a -m "update $(date +%F)"
+git -C $DIR push
