@@ -15,5 +15,5 @@ echo "executed $(date)" >> $DIR/execution.log
 
 # pushing upstream
 git -C $DIR add --all
-git -C $DIR commit --verbose -a -m "update $(date +%F)"
+git -C $DIR commit --verbose -a -m "update $(date)"
 git -C $DIR push
