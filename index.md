@@ -23,7 +23,9 @@ For **errors or criticism** open an issue in the github repository [kidpixo/COVI
 
 Based on [Covid-19 infection in Italy. Mathematical models and predictions](https://towardsdatascience.com/covid-19-infection-in-italy-mathematical-models-and-predictions-7784b4d7dd8d)
 
-Data from [CSSEGISandData/COVID-19](https://github.com/CSSEGISandData/COVID-19) / Dashboard [Coronavirus COVID-19 (2019-nCoV)](https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html?fbclid=IwAR3prf7gRuznOnGiv_wZpjhVQ-YZAtQcVJYorx1Yfu3Tutt4nn2dUQaGbyo#/bda7594740fd40299423467b48e9ecf6)
+
+- Data from [pcm-dpc/COVID-19: COVID-19 Italia - Monitoraggio situazione](https://github.com/pcm-dpc/COVID-19)
+- Dashboard [COVID-19 ITALIA - Desktop](https://opendatadpc.maps.arcgis.com/apps/opsdashboard/index.html#/b0c68bce2cce478eaac82fe38d4138b1)
 
 ## Plots description
 <a name="plots-description"></a>
